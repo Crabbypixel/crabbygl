@@ -58,7 +58,7 @@ void UIRenderer::LoadIcons(const char* path)
 void UIRenderer::LoadASCII(const char* path)
 {
 	int w, h, channels;
-	unsigned char* data = stbi_load(path, &w, &h, &channels, 1); // force grayscale
+	unsigned char* data = stbi_load(path, &w, &h, &channels, 1); // 1 = force grayscale
 
 	if (!data)
 	{
@@ -89,6 +89,7 @@ void UIRenderer::LoadASCII(const char* path)
 	m_asciiTexture = id;
 }
 
+// Returns the UV coordinates for a tile in the texture atlas based on its index
 static std::pair<glm::vec2, glm::vec2> AtlasUV(int tileIndex)
 {
 	static constexpr float TILE_WIDTH = 32.0f;
@@ -111,6 +112,7 @@ static std::pair<glm::vec2, glm::vec2> AtlasUV(int tileIndex)
 	return { { u0, v0 }, { u1, v1 } };
 }
 
+// Same as AtlasUV but for ASCII character map
 static std::pair<glm::vec2, glm::vec2> ASCIICharUV(char ch)
 {
 	static constexpr float TILE_WIDTH = 8.0f;
@@ -133,6 +135,7 @@ static std::pair<glm::vec2, glm::vec2> ASCIICharUV(char ch)
 	return { { u0, v0 }, { u1, v1 } };
 }
 
+// Mapping between BlockType enum and the corresponding tile index in the texture atlas
 static int GetIconIndex(BlockType t) noexcept
 {
 	switch (t)
@@ -196,6 +199,7 @@ static int GetIconIndex(BlockType t) noexcept
 		return 65;
 	case BlockType::BROWN_MUSHROOM:
 		return 66;
+	// No mapping exists, return -1
 	default:
 		std::cerr << "Unknown block type: " << (int)t << '\n';
 		return -1;
@@ -213,6 +217,8 @@ glm::vec2 UIRenderer::GetInventorySlotPos(int slotIndex) noexcept
 		return inventorySlotScreenPosY + (INV_TEX_H - texY - INV_SLOT_SIZE) * INVENTORY_SCALE;
 		};
 
+	// Inventory has 36 slots: 0-8 are hotbar, 9-35 are main inventory
+	// Deal with 0-8 first as it is separate from the main inventory
 	if (slotIndex < 9)
 	{
 		// Hotbar slots 0-8
@@ -243,6 +249,7 @@ glm::vec2 UIRenderer::GetHotbarSlotPos(int slotIndex) noexcept
 	return { hotbarSlotPosX, hotbarSlotScreenPosY };
 }
 
+// Get inventory slot index based on mouse position, returns -1 if not hovering over any slot
 int UIRenderer::GetMouseInventorySlot(float mouseX, float mouseY) noexcept
 {
 	constexpr float SLOT_SIZE = 32;
