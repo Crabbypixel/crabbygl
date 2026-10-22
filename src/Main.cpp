@@ -87,7 +87,8 @@ private:
 public:
 	bool Setup() override
 	{
-		player.SetPos(glm::vec3(65.0f, 256.0f, 38.0f));
+		player.SetPos(glm::vec3(35.0f, 97.0f, 77.0f));
+		//player.SetPos(glm::vec3(65.0f, 256.0f, 38.0f));
 		//player.SetPos(glm::vec3(7526.0f, 49.0f, 3784.0f));
 		camera.Init(player.GetPos(), glm::vec3(0.0f, 0.0f, -1.0f), ScreenWidth(), ScreenHeight());
 
@@ -498,6 +499,13 @@ public:
 				{
 					waitingForSecondTap = false;
 				}
+			}
+
+			// Temp
+			if(GetKey(GLFW_KEY_RIGHT_CONTROL).bPressed)
+			{
+				glm::vec3 pos = player.GetPos();
+				player.SetPos(glm::vec3(pos.x, pos.y + 100.0f, pos.z));
 			}
 		}
 

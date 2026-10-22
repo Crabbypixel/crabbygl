@@ -1,4 +1,4 @@
-#pragma once
+// Important clarification: main thread here means the global renderer thread, not the main thread which deals with capturing inputs (see OpenGL_3D.h/.cpp)
 
 #include <glm/glm.hpp>
 
@@ -152,8 +152,8 @@ private:
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 4;
-    int m_unloadDist = 4;
+    int m_viewDist = 8;
+    int m_unloadDist = 12;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 

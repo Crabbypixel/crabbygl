@@ -1,3 +1,4 @@
+// Important clarification: main thread here means the global renderer thread, not the main thread which deals with capturing inputs (see OpenGL_3D.h/.cpp)
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
@@ -442,7 +443,8 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
     m_playerPos = playerPos;
     glm::ivec2 playerChunkCoord = ChunkCoord(playerPos.x, playerPos.z);
 
-	// If the player is still in the same chunk as last update, check if all chunks in the view distance are loaded
+	// Optimization: If the player is still in the same chunk as last update, and all chunks in the view distance are
+    // already loaded (or queued for loading), then skip the entire function to avoid unnecessary load/unload operations
     if (playerChunkCoord == m_lastPlayerChunk)
     {
         bool hasAllChunksLoaded = true;
@@ -457,12 +459,15 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
 
                     glm::ivec2 c = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
 
-                    // If player chunk is NOT found in both core chunk data or queued data for loading -> not loaded
+                    // If player chunk is NOT found in both core chunk data OR queued data for loading -> not loaded
                     // Else, proceed with load/unload below
                     if (!chunks.count(c) && !m_chunkLoadReservations.count(c))
                         hasAllChunksLoaded = false;
                 }
             }
+
+			// If the player is still in the same chunk and all chunks in the view distance are loaded
+            // (or yet to be loaded in the queue), then no need to load/unload anything, directly skip the entire function
             if (hasAllChunksLoaded)
             {
                 return;
@@ -495,7 +500,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
                 continue;               // Deferred, retry unloading this chunk next time when worker is done
         }
 
-        // Else, proceed with unloading (only modified chunk
+        // Else, proceed with unloading (only modified chunks)
         auto it = chunks.find(chunkCoord);
         if (it != chunks.end() && it->second->modified)
         {
