@@ -190,6 +190,7 @@ void OpenGL_3D::UpdateCameraControls(float fElapsedTime)
 		camera.ProcessMouse(GetMousePosX(), GetMousePosY(), ScreenWidth(), ScreenHeight(), bFirstMouse.load(std::memory_order_relaxed));
 	}
 
+	// If both camera updates and pause are disabled, use the last mouse position to update the view matrix, so that the camera doesn't "jump" when resuming
 	if (!shouldUpdateCamera && !bIsPaused)
 		camera.ProcessMouse(camera.fLastX, camera.fLastY, ScreenWidth(), ScreenHeight(), bFirstMouse.load(std::memory_order_relaxed));
 
@@ -273,6 +274,8 @@ void OpenGL_3D::Start()
 {
 	m_bIsRunning = true;
 
+	// Will be transferred to the renderer thread, so that the callbacks can access the OpenGL_3D instance
+	// For now the main thread will handle the callbacks to initialize the mouse position and scroll wheel until the renderer thread is ready to take over
 	glfwSetWindowUserPointer(window, this);
 
 	// Set callbacks
@@ -353,6 +356,7 @@ void OpenGL_3D::PollKeys()
 		m_keyRaw[i] = (glfwGetKey(window, i) == GLFW_PRESS);
 }
 
+// Callback functions for GLFW
 void OpenGL_3D::mouse_callback(GLFWwindow* window, double xPos, double yPos)
 {
 	OpenGL_3D* instance = static_cast<OpenGL_3D*>(glfwGetWindowUserPointer(window));
@@ -379,6 +383,7 @@ void OpenGL_3D::mouse_button_callback(GLFWwindow* window, int button, int action
 		instance->m_bMouseButtonHeld[button].store(action != GLFW_RELEASE, std::memory_order_relaxed);
 }
 
+// GPU Debug and Information
 void OpenGL_3D::DisplayGPU()
 {
 	const char* renderer = (const char*)glGetString(GL_RENDERER);
