@@ -178,7 +178,7 @@ private:
     std::mutex m_chunkLoadJobMutex;
     std::condition_variable m_chunkLoadJobCV;
 
-    // Staging: workers push, main promotes
+    // Staging: workers push loaded chunks, main promotes
     std::unordered_map<glm::ivec2, std::unique_ptr<Chunk>, IVec2Hash> m_generatedChunkStaging;
     std::mutex m_generatedChunkStagingMutex;
 

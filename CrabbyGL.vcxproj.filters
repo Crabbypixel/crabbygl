@@ -102,6 +102,9 @@
     <ClCompile Include="src\world\LightingSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\rendering\Sun.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="externals\glad\glad.h">
@@ -1094,6 +1097,9 @@
     <ClInclude Include="includes\world\LightingSystem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="includes\rendering\Sun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="externals\glm\detail\func_common.inl">
@@ -1518,7 +1524,6 @@
     <None Include=".gitignore" />
     <None Include="imgui.ini" />
     <None Include="libraries\glfw3.dll" />
-    <None Include="CrabbyGL.exe" />
     <None Include="assets\shaders\Hotbar.glsl" />
     <None Include="assets\shaders\Hotbar_Selector.glsl" />
     <None Include="README.md" />
@@ -1527,6 +1532,8 @@
     <None Include="assets\shaders\Icons.glsl" />
     <None Include="assets\shaders\ASCII.glsl" />
     <None Include="assets\shaders\WaterMesh.glsl" />
+    <None Include="CrabbyGL.exe" />
+    <None Include="assets\shaders\Sun.glsl" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="libraries\glfw3.lib" />
@@ -1553,6 +1560,12 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="assets\textures\ascii.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="assets\greedy_glowstone.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="assets\greedy_uniform.png">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

@@ -255,7 +255,7 @@ bool World::PlaceBlock(const RaycastHit& hit, BlockType type)
 
     BlockType hitBlockType = GetBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z);
 
-    // Prevent placing beside non-solid blocks (cross-face blocks
+	// Prevent placing beside non-solid blocks (cross-face blocks like grass, flowers, etc.)
     if (IsCross(hitBlockType))
         return false;
 
