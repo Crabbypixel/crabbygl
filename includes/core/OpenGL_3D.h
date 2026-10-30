@@ -58,7 +58,7 @@ private:
 	short m_mouseOldState[MAX_MOUSE_BUTTONS] = { 0 };
 	short m_mouseNewState[MAX_MOUSE_BUTTONS] = { 0 };
 
-	// Mouse position - veries all the time
+	// Mouse position - varies all the time
 	std::atomic<float> m_mousePosX = 0.0f;
 	std::atomic<float> m_mousePosY = 0.0f;
 
