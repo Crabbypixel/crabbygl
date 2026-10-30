@@ -251,10 +251,12 @@ public:
 			camera.position = player.EyePos();
 
 			// Physics test - generate a gravel platform to test physics (in development - prone to bugs)
+			/*
 			if (GetKey('U').bPressed)
 			{
 				world.SetBlock(0, 60, 0, BlockType::WATER_FLOWING);
 			}
+			*/
 		}
 
 		// Raycast
@@ -290,8 +292,10 @@ public:
 			if (isBlockPlaceValid)
 			{
 				world.GetWorldPhysics().NotifyBlockRemoved(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
+
 				if (inventory.GetHeldBlock() == BlockType::WATER)
 					world.GetWorldPhysics().NotifyWaterSourcePlaced(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
+
 				world.GetLightingSystem().NotifyBlockPlaced(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z, inventory.GetHeldBlock());
 			}
 		}
@@ -662,3 +666,10 @@ int main()
 
 	return 0;
 }
+
+/*
+* TBA in Github:
+* https://www.reddit.com/r/gamedev/comments/2iru8i/fast_flood_fill_lighting_in_a_blocky_voxel_game/
+* https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
+* https://learnopengl.com/
+*/

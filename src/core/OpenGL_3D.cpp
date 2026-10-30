@@ -464,6 +464,7 @@ void OpenGL_3D::DisplayGPU()
 
 	std::cout << "\n=====================================\n\n";
 }
+
 OpenGL_3D::~OpenGL_3D()
 {
 }

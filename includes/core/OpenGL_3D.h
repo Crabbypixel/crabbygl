@@ -54,9 +54,11 @@ private:
 	bool m_keyRaw[MAX_KEYS] = {};		// Main thread writes, renderer thread swap to local buffer using mutex
 
 	// Mouse variables
+	// Mouse button state
 	short m_mouseOldState[MAX_MOUSE_BUTTONS] = { 0 };
 	short m_mouseNewState[MAX_MOUSE_BUTTONS] = { 0 };
 
+	// Mouse position - veries all the time
 	std::atomic<float> m_mousePosX = 0.0f;
 	std::atomic<float> m_mousePosY = 0.0f;
 
@@ -64,6 +66,7 @@ private:
 	float m_mousePosXFrame = 0.0f;
 	float m_mousePosYFrame = 0.0f;
 
+	// Mouse scroll wheel
 	// Written by main-thread GLFW callbacks, read by renderer thread
 	// Must be atomic to avoid undefined behavior and compiler register-caching
 	std::atomic<int>  m_mouseScroll{ 0 };
