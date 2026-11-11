@@ -41,7 +41,7 @@ World::~World()
         StopAllWorkers();
 }
 
-// ───── Coord helpers ─────────────────────────────────────────────────
+// ----- Coord helpers ------------------------------------------------
 // Get chunk coord from world coords
 glm::ivec2 World::ChunkCoord(float worldX, float worldZ)
 {
@@ -61,7 +61,7 @@ glm::ivec3 World::ChunkLocalCoord(int worldX, int worldY, int worldZ)
     };
 }
 
-// ───── Chunk access ──────────────────────────────────────────────────
+// ----- Chunk access ------------------------------------------------
 Chunk* World::GetChunk(int worldX, int worldZ)
 {
     auto it = chunks.find(ChunkCoord(worldX, worldZ));
@@ -74,7 +74,7 @@ const Chunk* World::GetChunk(int worldX, int worldZ) const
     return (it != chunks.end()) ? it->second.get() : nullptr;
 }
 
-// ───── Block access ──────────────────────────────────────────────────
+// ----- Block access ------------------------------------------------
 bool World::IsSolid(int worldX, int worldY, int worldZ) const
 {
     return ::IsSolid(GetBlock(worldX, worldY, worldZ));
@@ -111,7 +111,7 @@ void World::SetBlock(int worldX, int worldY, int worldZ, BlockType type)
     MarkAdjacentChunksAODirty(worldX, worldY, worldZ);
 }
 
-// ───── World generation ────────────────────────────────────────────────────
+// ----- World generation ------------------------------------------------
 float World::GetTerrainHeight(int wx, int wz)
 {
     const float MIN_H = 20.0f;
@@ -172,7 +172,7 @@ void World::FillChunk(Chunk& chunk, glm::ivec2 coord)
     }   
 }
 
-// ───── File IO ──────────────────────────────────────────────────
+// ----- File IO ------------------------------------------------
 std::string World::ChunkFilePath(glm::ivec2 coord)
 {
     return "saves/" + std::to_string(coord.x) + "_" + std::to_string(coord.y) + ".bin";
@@ -216,7 +216,7 @@ bool World::LoadChunkFromDisk(Chunk& chunk, glm::ivec2& coord)
 void World::UnloadChunks()
 {
     // Save modified chunks
-    for (auto& [coord, chunk] : chunks)
+    for (auto& [_, chunk] : chunks)
     {
         if (chunk->modified)
         {
@@ -247,7 +247,7 @@ void World::UnloadChunks()
     m_deferredLightingChunks.clear();
 }
 
-// ───── Raycast CRUD ──────────────────────────────────────────────────
+// ----- Raycast CRUD ------------------------------------------------
 bool World::PlaceBlock(const RaycastHit& hit, BlockType type)
 {
     if (!hit.hit)
@@ -362,7 +362,7 @@ void World::MarkAdjacentChunksDirty(int wx, int wy, int wz)
 	if (maxX && maxZ) markDirty(1, 1);
 }
 
-// ───── Textures ───────────────────────────────────────────────
+// ----- Textures ------------------------------------------------
 void World::SetChunkShader(Shader& shader, Shader& waterShader)
 {
     m_chunkShader = &shader;
@@ -406,7 +406,7 @@ void World::LoadAtlasTexture(const char* path)
     m_atlasTexture = id;
 }
 
-// ───── Frustum Culling ───────────────────────────────────────────────
+// ----- Frustum Culling ------------------------------------------------
 // Calculate planes
 void Frustum::Extract(const glm::mat4& vp)
 {
@@ -417,7 +417,8 @@ void Frustum::Extract(const glm::mat4& vp)
     planes[4] = glm::vec4(vp[0][3] + vp[0][2], vp[1][3] + vp[1][2], vp[2][3] + vp[2][2], vp[3][3] + vp[3][2]); // near
     planes[5] = glm::vec4(vp[0][3] - vp[0][2], vp[1][3] - vp[1][2], vp[2][3] - vp[2][2], vp[3][3] - vp[3][2]); // far
 
-    for (auto& p : planes) p /= glm::length(glm::vec3(p));
+    for (auto& p : planes)
+        p /= glm::length(glm::vec3(p));
 }
 
 bool Frustum::ContainsAABB(const glm::vec3& minP, const glm::vec3& maxP) const
@@ -437,7 +438,7 @@ bool Frustum::ContainsAABB(const glm::vec3& minP, const glm::vec3& maxP) const
     return true;
 }
 
-// ───── Infinite World ───────────────────────────────────────────────
+// ----- Infinite World ------------------------------------------------
 void World::UpdateChunkStreaming(const glm::vec3& playerPos)
 {
     m_playerPos = playerPos;
@@ -479,12 +480,13 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
         m_lastPlayerChunk = playerChunkCoord;
     }
 
+    // ----- Unload ------------------------------------------------
     // Make list of chunks to unload
     std::vector<glm::ivec2> chunksToUnload;
     for (auto& [chunkCoord, _] : chunks)
     {
         glm::ivec2 d = chunkCoord - playerChunkCoord;
-
+        
 		// If chunk is outside the unload distance, mark for unload
         if (d.x * d.x + d.y * d.y > m_unloadDist * m_unloadDist)
             chunksToUnload.push_back(chunkCoord);
@@ -500,11 +502,11 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
                 continue;               // Deferred, retry unloading this chunk next time when worker is done
         }
 
-        // Else, proceed with unloading (only modified chunks)
+        // Now unload from memory but first save modified chunks to disk
         auto it = chunks.find(chunkCoord);
         if (it != chunks.end() && it->second->modified)
         {
-            // Move the chunk to the save queue where the save worker thread will unload
+            // Move the chunk to the save queue where the save worker thread will save to disk and unload
             std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
             m_chunkSaveQueue.push(std::move(it->second));
             m_chunkSaveCV.notify_all();
@@ -521,6 +523,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
         m_deferredLightingChunks.erase(chunkCoord);             // Remove from deferred list if out of render distance
     }
 
+    // ----- Load ------------------------------------------------
     // Make list of chunks to load
     std::vector<glm::ivec2> chunksToLoad;
     for (int dx = -m_viewDist; dx <= m_viewDist; ++dx)
@@ -534,7 +537,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
 			// Candidate chunk coord to load
             glm::ivec2 chunkCoord = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
 
-            // If chunk coord isn't present, push to load list.
+            // If chunk coord isn't present, push to load list
             if (!chunks.count(chunkCoord))
                 chunksToLoad.push_back(chunkCoord);
         }
@@ -552,36 +555,34 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
         }
     );
 
-    // Actually load
+    std::lock_guard<std::mutex> lockQ(m_chunkLoadJobMutex);
+    std::lock_guard<std::mutex> lockS(m_chunkLoadReservationsMutex);
+
+    for (auto& chunkCoord : chunksToLoad)
     {
-        std::lock_guard<std::mutex> lockQ(m_chunkLoadJobMutex);
-        std::lock_guard<std::mutex> lockS(m_chunkLoadReservationsMutex);
+        // If chunks is already queued for loading then skip
+        if (m_chunkLoadReservations.count(chunkCoord))
+            continue;
 
-        for (auto& chunkCoord : chunksToLoad)
-        {
-            // If chunks is already queued for loading then skip
-            if (m_chunkLoadReservations.count(chunkCoord))
-                continue;
+        // Queue the coord of the to-be-loaded chunk
+        m_chunkLoadJobQueue.push(chunkCoord);
+        m_chunkLoadReservations.insert(chunkCoord);
 
-            // Queue the coord of the to-be-loaded chunk
-            m_chunkLoadJobQueue.push(chunkCoord);
-            m_chunkLoadReservations.insert(chunkCoord);
+        // Mark neighboring chunks dirty because faces at chunk borders depend on adjacent chunk data
+        // When a chunk changes, neighbors may need to rebuild meshes for correct face culling
+        // Hence mark them dirty so the renderer will re-build the neighbor chunk meshes
+        auto it = chunks.find(chunkCoord + glm::ivec2{ 1, 0 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
+             it = chunks.find(chunkCoord + glm::ivec2{ 0, 1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
+             it = chunks.find(chunkCoord + glm::ivec2{-1, 0 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
+             it = chunks.find(chunkCoord + glm::ivec2{ 0,-1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
 
-            // Mark neighboring chunks dirty because faces at chunk borders depend on adjacent chunk data
-            // When a chunk changes, neighbors may need to rebuild meshes for correct face culling
-            // Hence mark them dirty so the renderer will re-build the neighbor chunk meshes
-            auto it = chunks.find(chunkCoord + glm::ivec2{ 1, 0 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-                 it = chunks.find(chunkCoord + glm::ivec2{ 0, 1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-                 it = chunks.find(chunkCoord + glm::ivec2{-1, 0 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-                 it = chunks.find(chunkCoord + glm::ivec2{ 0,-1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-
-            // Same for diagonal neighbors
-                 it = chunks.find(chunkCoord + glm::ivec2{ 1, 1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-                 it = chunks.find(chunkCoord + glm::ivec2{ 1,-1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-                 it = chunks.find(chunkCoord + glm::ivec2{-1, 1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-                 it = chunks.find(chunkCoord + glm::ivec2{-1,-1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
-        }
+        // Same for diagonal neighbors
+             it = chunks.find(chunkCoord + glm::ivec2{ 1, 1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
+             it = chunks.find(chunkCoord + glm::ivec2{ 1,-1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
+             it = chunks.find(chunkCoord + glm::ivec2{-1, 1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
+             it = chunks.find(chunkCoord + glm::ivec2{-1,-1 }); if (it != chunks.end()) { it->second->dirty = true; it->second->aoDirty = true; }
     }
+
     m_chunkLoadJobCV.notify_all();
 }
 
@@ -604,14 +605,19 @@ void World::CommitGeneratedChunks()
             {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
         };
 
-        // Uncomment these lines to make all generated chunks modified -> so that they can be stored to disk
-        // But this causes a huge performance drop because of the disk IO, so only enable this when you want
-        // to test the chunk saving/loading functionality or when there's complex worldgen, for now worldgen
-        // is simple enough to run without significant frame drops
+        /* Uncomment this line to make all generated chunks modified->so that they can be stored to disk
+         * But this causes a huge performance drop because of the disk IO, so only enable this when you want
+         * to test the chunk saving/loading functionality or when there's complex worldgen, for now worldgen
+         * is simple enough to run without significant frame drops.
+         * 
+         * For now, generating new terrain is fast enough to not require saving to disk, but once we add
+		 * more complex worldgen, saving to disk will win out in performance as regenerating complex terrain
+         * is more expensive than loading from disk.
+        */
         // chunkPtr->modified = true;
+        chunkPtr->modified = false;
 
         chunkPtr->dirty = true;
-        chunkPtr->modified = false;
         chunkPtr->aoDirty = true;
 
         chunks[coord] = std::move(chunkPtr);
@@ -645,7 +651,7 @@ void World::CommitGeneratedChunks()
             }
         }
 
-        // Load deferred lighting chunks, remove if init successful
+        // Load deferred lighting chunks, remove from list if light initalization successful
         std::erase_if(m_deferredLightingChunks, [&](const glm::ivec2& deferredCoord) {
             // This chunk has just been light initalized, remove it from deferred list
             if (deferredCoord == coord)
@@ -683,7 +689,7 @@ void World::CommitGeneratedChunks()
         }
 
         /*
-         * Release the reservation AFTER promotion, not before
+         * Release the chunk from chunk reservations only AFTER loading and staging is complete
          *
          * m_chunkLoadReservations prevents the main thread from re-scheduling
          * a coord that is already in-flight (queued or sitting in staging)
@@ -854,7 +860,7 @@ void World::DrawAll(const glm::mat4& proj, const glm::mat4& view)
 }
 
 
-// ───── Multithreading ───────────────────────────────────────────────
+// ----- Multithreading ------------------------------------------------
 // Start and Stop workers
 void World::StartChunkLoadWorkers(int count)
 {

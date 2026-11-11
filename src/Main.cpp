@@ -81,6 +81,7 @@ private:
 	const float DOUBLE_TAP_WINDOW = 0.3f;
 	float spaceTimer = 0.0f;
 	bool waitingForSecondTap = false;
+	
 	bool isAOEnabled = true;
 	bool shouldDrawAsWireframe = false;
 
@@ -125,7 +126,7 @@ public:
 		if (!inventory.Load("saves/player_inventory.bin"))
 			std::cout << "Error loading player inventory\n";
 
-		// ───── World ──────────────────────────────────────────────────
+		// ----- World ------------------------------------------------
 		chunkMeshShader.load("assets/shaders/ChunkMesh.glsl");
 		waterMeshShader.load("assets/shaders/WaterMesh.glsl");
 
@@ -137,11 +138,11 @@ public:
 		world.StartChunkLoadWorkers(4);
 		world.StartMeshWorkers(4);
 
-		// ───── Shaders ──────────────────────────────────────────────────
+		// ----- Shaders ------------------------------------------------
 		InitShaders();
 
 		{
-			// ───── Framebuffers ──────────────────────────────────────────────────
+			// ----- Framebuffers ------------------------------------------------
 			// Generate and bind the framebuffer
 			framebufferShader.load("assets/shaders/Framebuffer.glsl");
 
@@ -172,9 +173,9 @@ public:
 			// Bind back to the default framebuffer
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			// ──────────────────────────────────────────────────────────────
+			// ------------------------------------------------------
 
-			// ───── UBOs ──────────────────────────────────────────────────
+			// ----- UBOs ------------------------------------------------
 			// UBOs to unnecessarily avoid settings uniforms in shaders repeatedly
 			// Bind "Matrices" uniform to binding index 0 in every shader
 			glUniformBlockBinding(axesShader.getID(), glGetUniformBlockIndex(axesShader.getID(), "Matrices"), 0);
@@ -190,7 +191,7 @@ public:
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboMatrices);
-			// ──────────────────────────────────────────────────────────────
+			// ------------------------------------------------------
 		}
 
 		// Initialize ImGui
@@ -228,7 +229,7 @@ public:
 		// Get user controls
 		UserControls(dt);
 
-		// ───── Physics ───────────────────────────────────────────────
+		// ----- Physics ------------------------------------------------
 		if (!bIsPaused)
 		{
 			bool shouldUpdatePlayerMovement = !inventory.IsOpen();
@@ -304,7 +305,7 @@ public:
 		world.GetWorldPhysics().Update(dt);
 		world.GetLightingSystem().Update();
 
-		// ───── Rendering ───────────────────────────────────────────────
+		// ----- Rendering ------------------------------------------------
 		// Update chunk streaming state based on player position:
 		// - Enqueue new chunks for generation within view distance
 		// - Identify chunks outside unload distance for removal
@@ -349,7 +350,7 @@ public:
 		// Coordinate axis
 		RenderAxis();
 
-		// ── UI pass ────────────────────────────────────────
+		// ----- UI pass ------------------------------------------------
 		// Disable writing & using the depth buffer
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
@@ -428,7 +429,7 @@ public:
 
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
-		// ───── ImGui ───────────────────────────────────────────────
+		// ----- ImGui ------------------------------------------------
 
 		glm::ivec2 playerChunk = World::ChunkCoord(player.GetPos().x, player.GetPos().z);
 		glm::ivec3 playerLocalChunk = World::ChunkLocalCoord(player.GetPos().x, player.GetPos().y, player.GetPos().z);

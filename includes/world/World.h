@@ -95,7 +95,7 @@ public:
     void SetChunkShader(Shader& shader, Shader& waterShader);
     void LoadAtlasTexture(const char* path);
 
-    // Block access & Chunk coord functions
+    // Block access & chunk coord functions
     [[nodiscard]] BlockType GetBlock(int worldX, int worldY, int worldZ) const;
     void SetBlock(int worldX, int worldY, int worldZ, BlockType type);
     [[nodiscard]] static glm::ivec2 ChunkCoord(float worldX, float worldZ);
@@ -146,14 +146,14 @@ private:
     WorldPhysics m_worldPhysics;
     LightingSystem m_lightingSystem;
 
-    // Chunk coordinates with lighting initialization postponed until their neighbors are loaded into the map
+    // Chunk coordinates with lighting initialization are postponed until their neighbors are loaded into the map
     std::unordered_set<glm::ivec2, IVec2Hash> m_deferredLightingChunks;
 
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 8;
-    int m_unloadDist = 12;
+    int m_viewDist = 4;
+    int m_unloadDist = 8;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 
@@ -167,7 +167,7 @@ private:
     // Returns height at location using Perlin noise
     [[nodiscard]] static float GetTerrainHeight(int wx, int wz);
 
-    // Chunk streaming functions
+    // Chunk streaming functionss
     [[nodiscard]] static std::string ChunkFilePath(glm::ivec2 coord);
     static void SaveChunkToDisk(const Chunk& chunk);
     static bool LoadChunkFromDisk(Chunk& chunk, glm::ivec2& coord);

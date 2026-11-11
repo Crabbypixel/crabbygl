@@ -5,9 +5,9 @@
 #include <algorithm>
 #include <cmath>
 
-// ── helpers ───────────────────────────────────────────────────────────
+// ----- helpers ---------------------------------------------------------
 
-// ── axis-separated resolution ─────────────────────────────────────────
+// ----- axis-separated resolution ---------------------------------------
 // Each axis resolved independently to prevent corner-locking
 void Player::ResolveX(const World& world)
 {
@@ -129,7 +129,7 @@ void Player::ResolveY(const World& world)
     }
 }
 
-// ── main update ───────────────────────────────────────────────────────
+// ----- main update ------------------------------------------------
 void Player::Update(float dt, const glm::vec3& camFront, bool fwd, bool back, bool left, bool right, bool jump, bool crouch, bool booster, bool shouldUpdateControls, const World& world)
 {
     // XZ movement — flatten camFront onto horizontal plane
