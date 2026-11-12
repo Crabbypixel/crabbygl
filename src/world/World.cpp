@@ -449,30 +449,28 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
     if (playerChunkCoord == m_lastPlayerChunk)
     {
         bool hasAllChunksLoaded = true;
-        std::lock_guard<std::mutex> lock(m_chunkLoadReservationsMutex);
+
+        for (int dx = -m_viewDist; dx <= m_viewDist && hasAllChunksLoaded; ++dx)
         {
-            for (int dx = -m_viewDist; dx <= m_viewDist && hasAllChunksLoaded; ++dx)
+            for (int dz = -m_viewDist; dz <= m_viewDist && hasAllChunksLoaded; ++dz)
             {
-                for (int dz = -m_viewDist; dz <= m_viewDist && hasAllChunksLoaded; ++dz)
-                {
-                    if (dx * dx + dz * dz > m_viewDist * m_viewDist)
-                        continue;
+                if (dx * dx + dz * dz > m_viewDist * m_viewDist)
+                    continue;
 
-                    glm::ivec2 c = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
+                glm::ivec2 c = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
 
-                    // If player chunk is NOT found in both core chunk data OR queued data for loading -> not loaded
-                    // Else, proceed with load/unload below
-                    if (!chunks.count(c) && !m_chunkLoadReservations.count(c))
-                        hasAllChunksLoaded = false;
-                }
+                // If player chunk is NOT found in both core chunk data OR queued data for loading -> not loaded
+                // Else, proceed with load/unload below
+                if (!chunks.count(c) && !m_chunkLoadReservations.count(c))
+                    hasAllChunksLoaded = false;
             }
+        }
 
-			// If the player is still in the same chunk and all chunks in the view distance are loaded
-            // (or yet to be loaded in the queue), then no need to load/unload anything, directly skip the entire function
-            if (hasAllChunksLoaded)
-            {
-                return;
-            }
+		// If the player is still in the same chunk and all chunks in the view distance are loaded
+        // (or yet to be loaded in the queue), then no need to load/unload anything, directly skip the entire function
+        if (hasAllChunksLoaded)
+        {
+            return;
         }
     }
     else
@@ -495,7 +493,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
     // Actually unload
     for (auto& chunkCoord : chunksToUnload)
     {
-        // Guard check: if chunkCoord is also present in meshQueue, don't unload
+        // Guard check: Defer unloading if the chunk is being meshed
         {
             std::lock_guard<std::mutex> lock(m_chunkMeshUsageGuardMutex);
             if (m_chunkMeshUsageGuards.count(chunkCoord))
@@ -508,8 +506,9 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
         {
             // Move the chunk to the save queue where the save worker thread will save to disk and unload
             std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
+			m_savesInFlight.insert(chunkCoord);  // Mark this chunk as being saved to prevent loading it while saving
             m_chunkSaveQueue.push(std::move(it->second));
-            m_chunkSaveCV.notify_all();
+            m_chunkSaveCV.notify_one();
         }
 
         // Remove chunk from memory
@@ -538,7 +537,10 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
             glm::ivec2 chunkCoord = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
 
             // If chunk coord isn't present, push to load list
-            if (!chunks.count(chunkCoord))
+            // But if the coord is present in save in-flight list - if coord 
+            // is queued for saving or in process of saving to disk, then defer
+			std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
+            if (!chunks.count(chunkCoord) && !m_savesInFlight.count(chunkCoord))
                 chunksToLoad.push_back(chunkCoord);
         }
     }
@@ -555,8 +557,8 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
         }
     );
 
+    // Actually load 
     std::lock_guard<std::mutex> lockQ(m_chunkLoadJobMutex);
-    std::lock_guard<std::mutex> lockS(m_chunkLoadReservationsMutex);
 
     for (auto& chunkCoord : chunksToLoad)
     {
@@ -697,17 +699,16 @@ void World::CommitGeneratedChunks()
          * If the worker erased the reservation inside the thread itself, a race opens:
          *   Worker  -> pushes to staging, erases reservation
          *   Main    -> sees coord absent from chunks AND reservations
-		 *           -> re-schedules same coord -> double generation -> Undefined Behavior
+		 *           -> re-schedules same coord -> double generation -> mesh workers holding
+         *              raw chunk ptrs now point at freed memory (UAF) -> lost edits, UB, etc.
          *
          * Safe ordering:
          *   Worker  -> generate -> push to staging  (reservation held)
          *   Main    -> promote staging -> insert into chunks
          *           -> THEN erase reservation here  <- earliest safe point
          */
-        {
-            std::lock_guard<std::mutex> lock(m_chunkLoadReservationsMutex);
-            m_chunkLoadReservations.erase(coord);
-        }
+
+        m_chunkLoadReservations.erase(coord);
     }
 }
 
@@ -716,7 +717,7 @@ void World::SyncRenderer()
     auto getChunkFromChunkCoords = [&](glm::ivec2 c) -> Chunk* {
         auto it = chunks.find(c);
         return it != chunks.end() ? it->second.get() : nullptr;
-        };
+    };
 
     // Phase 1: Enqueue dirty chunks to mesh workers
     {
@@ -733,7 +734,7 @@ void World::SyncRenderer()
             if (m_chunkMeshUsageGuards.count(chunkPos))
                 continue;
 
-            // Protect coord (and +4 neighbors) from unload/deletion later by the main thread
+            // Protect coord (and +8 neighbors) from unload/deletion later by the main thread
             m_chunkMeshUsageGuards[chunkPos]++;
             for (auto& neighborPos : GUARDED_NEIGHBORS)
                 ++m_chunkMeshUsageGuards[chunkPos + neighborPos];    // We check if this coord is present in worker thread, no need to check now
@@ -762,37 +763,39 @@ void World::SyncRenderer()
     // Amortized GPU vertex upload
     const int MAX_UPLOADS_PER_FRAME = 4;
     int uploadsThisFrame = 0;
+    int waterUploadsThisFrame = 0;
 
-    // Opaque pass
-    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> chunksToUpload;
+    // Non-water pass
+    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> meshUploads;
     {
         std::lock_guard<std::mutex> lock(m_meshStagingMutex);
 
         auto it = m_meshStaging.begin();
         while (it != m_meshStaging.end() && uploadsThisFrame < MAX_UPLOADS_PER_FRAME)
         {
-            chunksToUpload.push_back({ it->first, std::move(it->second) });
+            meshUploads.push_back({ it->first, std::move(it->second) });
             it = m_meshStaging.erase(it);
             uploadsThisFrame++;
         }
     }
 
     // Water pass
-    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> waterChunksToUpload;
+    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> waterMeshesUploads;
     {
         std::lock_guard<std::mutex> lock(m_meshStagingMutex);
 
         auto it = m_waterMeshStaging.begin();
-        while (it != m_waterMeshStaging.end())
+        while (it != m_waterMeshStaging.end() && waterUploadsThisFrame < MAX_UPLOADS_PER_FRAME)
         {
-            waterChunksToUpload.push_back({ it->first, std::move(it->second) });
+            waterMeshesUploads.push_back({ it->first, std::move(it->second) });
             it = m_waterMeshStaging.erase(it);
+            waterUploadsThisFrame++;
         }
     }
 
     // Phase 3: Upload meshes to the GPU
-    // Opaque pass
-    for (auto& [coord, verts] : chunksToUpload)
+    // Non-water pass
+    for (auto& [coord, verts] : meshUploads)
     {
         auto it = m_chunkMeshes.find(coord);
         if (it != m_chunkMeshes.end())
@@ -800,7 +803,7 @@ void World::SyncRenderer()
     }
 
     // Water pass
-    for (auto& [coord, verts] : waterChunksToUpload)
+    for (auto& [coord, verts] : waterMeshesUploads)
     {
         auto it = m_waterMeshes.find(coord);
         if (it != m_waterMeshes.end())
@@ -834,15 +837,6 @@ void World::DrawAll(const glm::mat4& proj, const glm::mat4& view)
 
         mesh.Draw();
     }
-
-    //if (!m_waterShader)
-    //    return;
-
-    //m_waterShader->use();
-
-    //// Bind textures once — shared across all chunk draw calls
-    //glActiveTexture(GL_TEXTURE1);
-    //glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
 
     m_frustum.Extract(proj * view);
 
@@ -878,7 +872,9 @@ void World::StartMeshWorkers(int count)
 void World::StopAllWorkers()
 {
     // Initiate shutdown
-    m_shutdown = true;
+    { std::lock_guard<std::mutex> l(m_chunkLoadJobMutex); m_shutdown = true; }
+    { std::lock_guard<std::mutex> l(m_meshJobMutex); }
+    { std::lock_guard<std::mutex> l(m_chunkSaveMutex); }
 
     // Wake all sleeping workers so they exit
     m_chunkLoadJobCV.notify_all();
@@ -1046,5 +1042,11 @@ void World::SaveWorkerLoop()
 
         // Save the chunk to disk
         SaveChunkToDisk(*chunk);
+
+        // Release only once the file is complete
+        {
+            std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
+            m_savesInFlight.erase(chunk->chunkPos);
+        }
     }
 }

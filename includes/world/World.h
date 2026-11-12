@@ -152,8 +152,8 @@ private:
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 4;
-    int m_unloadDist = 8;
+    int m_viewDist = 3;
+    int m_unloadDist = 3;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 
@@ -184,7 +184,6 @@ private:
 
 	// Prevents duplicate load scheduling: main thread only
     std::unordered_set<glm::ivec2, IVec2Hash> m_chunkLoadReservations;
-    std::mutex m_chunkLoadReservationsMutex;
 
 	// Chunk workers
     std::vector<std::thread> m_chunkLoadWorkers;
@@ -217,6 +216,10 @@ private:
     std::queue<std::unique_ptr<Chunk>> m_chunkSaveQueue;
     std::mutex m_chunkSaveMutex;
     std::condition_variable m_chunkSaveCV;
+
+    // Coords with a saved queue or being written to disk - loading one now
+    // would read a stale or half-written chunk from disk - this prevents that
+    std::unordered_set<glm::ivec2, IVec2Hash> m_savesInFlight;
 
 	// Use a single thread for saving chunks to disk
     std::thread m_chunkSaveWorker;
