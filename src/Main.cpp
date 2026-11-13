@@ -25,6 +25,7 @@
 #include "rendering/VertexBuffer.h"
 #include "rendering/BufferLayout.h"
 #include "rendering/UIRenderer.h"
+#include "rendering/Sun.h"
 
 #include "imgui/imgui_includes.h"
 #include "imgui/imgui_internal.h"
@@ -57,13 +58,15 @@ private:
 	Shader framebufferShader;
 	Shader crosshairShader;
 	Shader chunkMeshShader;
-	Shader waterMeshShader;
 
 	// Player
 	Player player;
 
 	// World
 	World world;
+
+	// Sky
+	Sun sun;
 
 	// Chunk outlines for debugging
 	ChunkDebug chunkDebug;
@@ -128,10 +131,12 @@ public:
 
 		// ----- World ------------------------------------------------
 		chunkMeshShader.load("assets/shaders/ChunkMesh.glsl");
-		waterMeshShader.load("assets/shaders/WaterMesh.glsl");
 
-		world.SetChunkShader(chunkMeshShader, waterMeshShader);
+		world.SetChunkShader(chunkMeshShader);
 		world.LoadAtlasTexture("assets/textures/textures.png");
+
+		// ----- Sun ------------------------------------------------
+		sun.Init("assets/shaders/Sun.glsl");
 
 		// Spawn 4 threads for loading chunks and 4 threads for generating meshes
 		// This is the optimal spot for good performance without overly increasing number of threads
@@ -180,7 +185,6 @@ public:
 			// Bind "Matrices" uniform to binding index 0 in every shader
 			glUniformBlockBinding(axesShader.getID(), glGetUniformBlockIndex(axesShader.getID(), "Matrices"), 0);
 			glUniformBlockBinding(chunkMeshShader.getID(), glGetUniformBlockIndex(chunkMeshShader.getID(), "Matrices"), 0);
-			glUniformBlockBinding(waterMeshShader.getID(), glGetUniformBlockIndex(waterMeshShader.getID(), "Matrices"), 0);
 
 			ErrorLog();
 
@@ -252,12 +256,17 @@ public:
 			camera.position = player.EyePos();
 
 			// Physics test - generate a gravel platform to test physics (in development - prone to bugs)
-			/*
-			if (GetKey('U').bPressed)
+			glm::ivec2 startPos = { 0, 0 };
+			int height = 60;
+			int c = 2;
+			if (GetKey(GLFW_KEY_LEFT_CONTROL).bHeld && GetKey('U').bPressed)
 			{
-				world.SetBlock(0, 60, 0, BlockType::WATER_FLOWING);
+				for(int x = 0; x < c; ++x)
+				{
+					for(int z = 0; z < c; ++z)
+						world.SetBlock(startPos.x + x, height, startPos.y + z, BlockType::GRAVEL);
+				}
 			}
-			*/
 		}
 
 		// Raycast
@@ -338,6 +347,8 @@ public:
 
 		// Toggle AO
 		chunkMeshShader.setBool("u_isAOEnabled", isAOEnabled);
+
+		sun.Draw(camera.position, glm::vec3(-1.0f, -0.5f, 0.0f));
 
 		// Draw world
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);

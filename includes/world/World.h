@@ -1,5 +1,5 @@
 // Important clarification: main thread here means the global renderer thread, not the main thread which deals with capturing inputs (see OpenGL_3D.h/.cpp)
-
+#pragma once
 #include <glm/glm.hpp>
 
 #include "rendering/ChunkMesh.h"
@@ -92,7 +92,7 @@ public:
     void UnloadChunks();
 
     // Load shader and texture file
-    void SetChunkShader(Shader& shader, Shader& waterShader);
+    void SetChunkShader(Shader& shader);
     void LoadAtlasTexture(const char* path);
 
     // Block access & chunk coord functions
@@ -136,7 +136,6 @@ private:
     std::unordered_map<glm::ivec2, ChunkMesh, IVec2Hash> m_chunkMeshes;
     std::unordered_map<glm::ivec2, ChunkMesh, IVec2Hash> m_waterMeshes;
     Shader* m_chunkShader = nullptr;
-    Shader* m_waterShader = nullptr;
     unsigned int m_atlasTexture = 0;
 
 	// Frustum planes for Frustum Culling
@@ -152,8 +151,8 @@ private:
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 3;
-    int m_unloadDist = 3;
+    int m_viewDist = 6;
+    int m_unloadDist = 8;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 
@@ -217,7 +216,7 @@ private:
     std::mutex m_chunkSaveMutex;
     std::condition_variable m_chunkSaveCV;
 
-    // Coords with a saved queue or being written to disk - loading one now
+    // Coords with a save queued or being written to disk - loading one now
     // would read a stale or half-written chunk from disk - this prevents that
     std::unordered_set<glm::ivec2, IVec2Hash> m_savesInFlight;
 

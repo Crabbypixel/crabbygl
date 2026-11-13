@@ -3,12 +3,14 @@
 #include "world/World.h"
 #include "world/BlockRegistry.h"
 
+#include <iostream>
+
 void WorldPhysics::InitChunkWater(Chunk* chunk)
 {
 	if (!chunk)
 		return;
 
-	const glm::ivec2& chunkPos = chunk->chunkPos;
+	const glm::ivec2& chunkPos = chunk->chunkPos;	
 
 	for(int y = 0; y < CY; ++y)
 	for(int x = 0; x < CX; ++x)
@@ -36,15 +38,36 @@ void WorldPhysics::InitChunkWater(Chunk* chunk)
 	}
 }
 
-
 void WorldPhysics::Update(float dt)
 {
+	// After a long stall (expensive frame), simulate this many steps only
+	// This makes the world to briefly run slow instead of fast-forwarding or spiralling
+	static constexpr int MAX_TICKS_PER_FRAME = 5;
+
+	// Only report stalls of 1s+; shorter hitches are normal and would spam the log
+	static constexpr int SKIP_LOG_THRESHOLD = static_cast<int>(TICK_RATE);
+
 	m_accumulator += dt;
 
-	while (m_accumulator >= TICK_DT)
+	int ticks = 0;
+	while (m_accumulator >= TICK_DT && ticks < MAX_TICKS_PER_FRAME)
 	{
 		Tick();
 		m_accumulator -= TICK_DT;
+		++ticks;
+	}
+
+	if (m_accumulator >= TICK_DT)
+	{
+		const int skippedTicks = static_cast<int>(m_accumulator / TICK_DT);
+
+		if (skippedTicks >= SKIP_LOG_THRESHOLD)
+		{
+			std::cerr << "Can't keep up! Running " << static_cast<int>(m_accumulator * 1000.0f)
+				<< " ms behind, skipping " << skippedTicks << " ticks\n";
+
+			m_accumulator = 0.0f;
+		}
 	}
 }
 

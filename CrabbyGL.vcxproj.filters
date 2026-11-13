@@ -1531,7 +1531,6 @@
     <None Include="assets\shaders\DebugRect.glsl" />
     <None Include="assets\shaders\Icons.glsl" />
     <None Include="assets\shaders\ASCII.glsl" />
-    <None Include="assets\shaders\WaterMesh.glsl" />
     <None Include="CrabbyGL.exe" />
     <None Include="assets\shaders\Sun.glsl" />
   </ItemGroup>

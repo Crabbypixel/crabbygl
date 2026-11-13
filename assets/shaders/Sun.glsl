@@ -1,5 +1,5 @@
 #ifdef SHADER_VERTEX
-layout (location = 0) in vec3 aOffset;
+layout (location = 0) in vec2 aOffset;
 
 layout (std140) uniform Matrices
 {
@@ -8,6 +8,8 @@ layout (std140) uniform Matrices
 };
 
 uniform vec3 uSunWorldPos;
+uniform vec3 uSunRight;
+uniform vec3 uSunUp;
 uniform float uSunSize;
 
 out vec2 fUV;
@@ -16,12 +18,8 @@ void main()
 {
 	fUV = aOffset;
 
-	// Transform to view space, then offset in view-space XY. Since view-space X/Y are
-	// always camera-facing this billboards without needing camera right/up vectors on CPU.
-	vec4 viewPos = matView * vec4(uSunWorldPos, 1.0f);
-	viewPos.xy += aOffset * uSunSize;
-
-	gl_Position = matProjection * viewPos;
+	vec3 worldPos = uSunWorldPos + (aOffset.x * uSunRight + aOffset.y * uSunUp) * uSunSize;
+	gl_Position = matProjection * matView * vec4(worldPos, 1.0f);
 }
 #endif
 
@@ -31,14 +29,21 @@ out vec4 FragColor;
 
 uniform vec3 uSunColor;
 
+const float PIXELS = 16.0f;	// Pixel-art resolution across the whole quad
+const float CORE = 0.6f;
+
 void main()
 {
-	float d = length(fUV);
-	if(d > 1.0f)
-		discard;
+	// Snap to pixel centres -> blocky edges
+	vec2 p = (floor((fUV * 0.5f + 0.5f) * PIXELS) + 0.5f) / PIXELS * 2.0f - 1.0f;
 
-	// Soft glow falloff towards edge, hard on center
-	float glow = smoothstep(1.0f, 0.35f, d);
-	FragColor = vec4(uSunColor, glow);
+	// Chebyshev distance -> square rings, not circles
+	float d = max(abs(p.x), abs(p.y));
+
+	float core = step(d, CORE);
+	float halo = (1.0f - smoothstep(CORE, 1.0f, d)) * 0.2f;
+
+	vec3 haloColor = uSunColor * vec3(1.0f, 0.85f, 0.5f);
+	FragColor = vec4(mix(haloColor, vec3(1.0f), core), max(core, halo));
 }
 #endif

@@ -363,13 +363,9 @@ void World::MarkAdjacentChunksDirty(int wx, int wy, int wz)
 }
 
 // ----- Textures ------------------------------------------------
-void World::SetChunkShader(Shader& shader, Shader& waterShader)
+void World::SetChunkShader(Shader& shader)
 {
     m_chunkShader = &shader;
-    m_waterShader = &waterShader;
-
-    waterShader.use();
-    waterShader.setInt("u_atlas", 1);
 
     shader.use();
     shader.setInt("u_atlas", 1);   // single sampler, slot 1
@@ -525,23 +521,25 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
     // ----- Load ------------------------------------------------
     // Make list of chunks to load
     std::vector<glm::ivec2> chunksToLoad;
-    for (int dx = -m_viewDist; dx <= m_viewDist; ++dx)
+    std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
     {
-        for (int dz = -m_viewDist; dz <= m_viewDist; ++dz)
+        for (int dx = -m_viewDist; dx <= m_viewDist; ++dx)
         {
-			// If chunk is outside the view distance, skip
-            if (dx * dx + dz * dz > m_viewDist * m_viewDist)
-                continue;
+            for (int dz = -m_viewDist; dz <= m_viewDist; ++dz)
+            {
+                // If chunk is outside the view distance, skip
+                if (dx * dx + dz * dz > m_viewDist * m_viewDist)
+                    continue;
 
-			// Candidate chunk coord to load
-            glm::ivec2 chunkCoord = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
+                // Candidate chunk coord to load
+                glm::ivec2 chunkCoord = { playerChunkCoord.x + dx, playerChunkCoord.y + dz };
 
-            // If chunk coord isn't present, push to load list
-            // But if the coord is present in save in-flight list - if coord 
-            // is queued for saving or in process of saving to disk, then defer
-			std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
-            if (!chunks.count(chunkCoord) && !m_savesInFlight.count(chunkCoord))
-                chunksToLoad.push_back(chunkCoord);
+                // If chunk coord isn't present, push to load list
+                // But if the coord is present in save in-flight list - if coord 
+                // is queued for saving or in process of saving to disk, then defer
+                if (!chunks.count(chunkCoord) && !m_savesInFlight.count(chunkCoord))
+                    chunksToLoad.push_back(chunkCoord);
+            }
         }
     }
 
@@ -720,6 +718,7 @@ void World::SyncRenderer()
     };
 
     // Phase 1: Enqueue dirty chunks to mesh workers
+    int jobsPushed = 0;
     {
         std::lock_guard<std::mutex> lockQ(m_meshJobMutex);
         std::lock_guard<std::mutex> lockR(m_chunkMeshUsageGuardMutex);
@@ -755,13 +754,21 @@ void World::SyncRenderer()
 
             m_meshJobQueue.push(job);
             chunk->dirty = false;
+            ++jobsPushed;
         }
     }
-    m_meshJobCV.notify_all();
+
+    // Wake up workers only if there's a job, if only one job was queued,
+    // notify one worker else notify all workers and pick up jobs
+    if (jobsPushed == 1)
+        m_meshJobCV.notify_one();
+    else if(jobsPushed > 1)
+        m_meshJobCV.notify_all();
 
     // Phase 2: Drain mesh staging, move the meshes from the staging region to local main thread memory
     // Amortized GPU vertex upload
     const int MAX_UPLOADS_PER_FRAME = 4;
+
     int uploadsThisFrame = 0;
     int waterUploadsThisFrame = 0;
 

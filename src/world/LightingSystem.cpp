@@ -224,7 +224,7 @@ void LightingSystem::PropagateTorch()
 		if (!chunk)
 		{
 			std::cerr << "PropagateTorch() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
@@ -303,7 +303,7 @@ void LightingSystem::RemoveTorch()
 		if (!chunk)
 		{
 			std::cerr << "RemoveTorch() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
@@ -375,7 +375,7 @@ void LightingSystem::PropagateSunlight()
 		if (!chunk)
 		{
 			std::cerr << "PropagateSunlight() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
@@ -457,7 +457,7 @@ void LightingSystem::RemoveSunlight()
 		if (!chunk)
 		{
 			std::cerr << "RemoveSunlight() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
