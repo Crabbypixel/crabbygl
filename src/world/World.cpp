@@ -521,8 +521,8 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
     // ----- Load ------------------------------------------------
     // Make list of chunks to load
     std::vector<glm::ivec2> chunksToLoad;
-    std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
     {
+        std::lock_guard<std::mutex> lock(m_chunkSaveMutex);
         for (int dx = -m_viewDist; dx <= m_viewDist; ++dx)
         {
             for (int dz = -m_viewDist; dz <= m_viewDist; ++dz)

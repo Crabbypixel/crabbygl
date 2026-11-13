@@ -72,6 +72,9 @@ uniform vec3 u_lightDir;
 uniform vec3 u_ambient;
 uniform vec3 u_diffuse;
 
+uniform float u_skyFactor;      // 0 night, 1 day
+uniform float u_minLight;       // Floor when no sky and no torch
+
 // Block selection highlight
 uniform bool  u_isSelected;
 uniform ivec3 u_selectedBlock;
@@ -188,7 +191,9 @@ void main()
    float NdotL = max(dot(normalize(NORMALS[fNormalIndex]), -normalize(u_lightDir)), 0.0f);
    
    // Sky contribution: exposure × time-of-day × directional face angle
-   float sunLight = skyExposure * 1.0f * (u_diffuse.r * NdotL) * 1.0f + u_ambient.r;
+   // Sky nibble = static exposure; u_skyFactor = per-frame time of day
+   float sky = skyExposure * u_skyFactor;
+   float sunLight = sky * u_diffuse.r * NdotL + mix(u_minLight, u_ambient.r, sky);
    
    // Torch overrides directional: torch=1 -> full omni, torch=0 -> sun only
    float finalLight = mix(sunLight, 1.0f, torch);

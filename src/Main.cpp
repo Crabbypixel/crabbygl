@@ -26,6 +26,7 @@
 #include "rendering/BufferLayout.h"
 #include "rendering/UIRenderer.h"
 #include "rendering/Sun.h"
+#include "world/DayNightCycle.h"
 
 #include "imgui/imgui_includes.h"
 #include "imgui/imgui_internal.h"
@@ -67,6 +68,8 @@ private:
 
 	// Sky
 	Sun sun;
+	DayNightCycle dayCycle;
+	float minLight = 0.06f;
 
 	// Chunk outlines for debugging
 	ChunkDebug chunkDebug;
@@ -222,8 +225,17 @@ public:
 		// Bind to the custom framebuffer
 		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-		// Clear colorbuffer, depthbuffer and stencilbuffer
-		glClearColor(0.227f, 0.757f, 1.0f, 1.0f);
+		// Clear colorbuffer
+		if (!bIsPaused)
+			dayCycle.Update(dt);
+
+		const glm::vec3 skyColor = dayCycle.SkyColor();
+		glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+
+		// Default skycolor used before introducing day-night cycle
+		//glClearColor(0.227f, 0.757f, 1.0f, 1.0f);
+
+		// Clear depthbuffer and stencilbuffer
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 		// Use the depth buffer
@@ -348,7 +360,14 @@ public:
 		// Toggle AO
 		chunkMeshShader.setBool("u_isAOEnabled", isAOEnabled);
 
-		sun.Draw(camera.position, glm::vec3(-1.0f, -0.5f, 0.0f));
+		// Day/night: per-frame uniforms only, world/lighting state untouched
+		const glm::vec3 lightDir = dayCycle.LightDir();
+		chunkMeshShader.setVec3("u_lightDir", lightDir);
+		chunkMeshShader.setFloat("u_skyFactor", dayCycle.SkyFactor());
+		chunkMeshShader.setFloat("u_minLight", minLight);
+
+		// Draw the sun
+		sun.Draw(camera.position, lightDir);
 
 		// Draw world
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
@@ -469,6 +488,10 @@ public:
 		if (ImGui::Button("Teleport"))
 			player.SetPos(glm::vec3(teleportX, teleportY, teleportZ));
 
+		ImGui::SliderFloat("Time of day", &dayCycle.time, 0.0f, 0.999f);
+		ImGui::Checkbox("Pause time", &dayCycle.paused);
+		ImGui::SliderFloat("Min light", &minLight, 0.0f, 3.0f);
+
 		ImGui::End();
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -574,7 +597,8 @@ public:
 	void InitShaders()
 	{
 		chunkMeshShader.use();
-		chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
+		// This is now done by the day-night cycle
+		//chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
 		chunkMeshShader.setVec3("u_ambient", glm::vec3(0.25f));
 		chunkMeshShader.setVec3("u_diffuse", glm::vec3(0.7f));
 	}

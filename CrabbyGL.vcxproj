@@ -152,6 +152,7 @@
     <ClCompile Include="externals\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="externals\imgui\imgui_tables.cpp" />
     <ClCompile Include="externals\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="src\world\DayNightCycle.cpp" />
     <ClCompile Include="src\rendering\Sun.cpp" />
     <ClCompile Include="src\world\LightingSystem.cpp" />
     <ClCompile Include="src\debug\ChunkDebug.cpp" />
@@ -502,6 +503,7 @@
     <ClInclude Include="includes\world\BlockType.h" />
     <ClInclude Include="includes\world\Chunk.h" />
     <ClInclude Include="includes\world\ChunkMeshBuilder.h" />
+    <ClInclude Include="includes\world\DayNightCycle.h" />
     <ClInclude Include="includes\world\LightingSystem.h" />
     <ClInclude Include="includes\world\Raycast.h" />
     <ClInclude Include="includes\rendering\Vertex.h" />

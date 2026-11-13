@@ -105,6 +105,9 @@
     <ClCompile Include="src\rendering\Sun.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\world\DayNightCycle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="externals\glad\glad.h">
@@ -1098,6 +1101,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="includes\rendering\Sun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="includes\world\DayNightCycle.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
