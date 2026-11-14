@@ -9,15 +9,19 @@ void DayNightCycle::Update(float dt)
     time = std::fmod(time + dt / dayLengthSec, 1.0f);
 }
 
+// World -> sun, rises at +X, sets at -X, exactly in the XY plane (Z = 0)
+glm::vec3 DayNightCycle::SunDir() const
+{
+    float a = (time - 0.25f) * glm::two_pi<float>();   // Zero at sunrise
+    return glm::vec3(std::cosf(a), std::sinf(a), 0.0f);
+}
 
+// Shading only: small Z tilt so side faces aren't all NdotL = 0 at noon
+// Nothing casts shadows, so the mismatch with the drawn sun is invisible
 glm::vec3 DayNightCycle::LightDir() const
 {
-    // -u_lightDir points towards light
-    float a = (time - 0.25f) * glm::two_pi<float>(); // Zero at sunrise
-
-    // Z tilt: overhead sun would give ever side face NdotL = 0 at noon
-    glm::vec3 toSun = glm::normalize(glm::vec3(std::cos(a), std::sin(a), 0.3f));
-    return -toSun;
+    const glm::vec3 s = SunDir();
+    return -glm::normalize(glm::vec3(s.x, s.y, 0.3f));
 }
 
 // 0 night .. 1 day, smooth through twilight
@@ -38,4 +42,34 @@ glm::vec3 DayNightCycle::SkyColor() const
     // Dust tint peaks with sun on the horizon
     float duskAmount = 1.0f - glm::smoothstep(0.0f, 0.3f, std::abs(h));
     return glm::mix(c, dusk, duskAmount * 0.5f);
+}
+
+glm::vec3 DayNightCycle::ZenithColor() const
+{
+    const glm::vec3 night(0.01f, 0.01f, 0.04f);
+    const glm::vec3 day(0.227f, 0.757f, 1.0f);      // Old flat sky color
+    return glm::mix(night, day, SkyFactor());
+}
+
+glm::vec3 DayNightCycle::HorizonColor() const
+{
+    // Minecraft's horizon is the fog color; paler than zenith
+    const glm::vec3 night(0.04f, 0.05f, 0.10f);
+    const glm::vec3 day(0.70f, 0.85f, 1.0f);
+    return glm::mix(night, day, SkyFactor());
+}
+
+glm::vec4 DayNightCycle::SunsetColor() const
+{
+    static constexpr float RANGE = 0.4f;    // Active while sun is within +-0.4 of the horizon
+    const float h = SunDir().y;
+
+    if (h < -RANGE || h > RANGE)
+        return glm::vec4(0.0f);
+
+    const float f = h / RANGE * 0.5f + 0.5f;    // 0 -> sun below, 1 -> sun above
+    float strength = 1.0f - (1.0f - std::sinf(f * glm::pi<float>())) * 0.99f;
+    strength *= strength;
+
+    return glm::vec4(f * 0.3f + 0.7f, f * f * 0.7f + 0.2f, 0.2f, strength);
 }

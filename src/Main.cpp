@@ -59,6 +59,7 @@ private:
 	Shader framebufferShader;
 	Shader crosshairShader;
 	Shader chunkMeshShader;
+	Shader skyShader;
 
 	// Player
 	Player player;
@@ -138,8 +139,9 @@ public:
 		world.SetChunkShader(chunkMeshShader);
 		world.LoadAtlasTexture("assets/textures/textures.png");
 
-		// ----- Sun ------------------------------------------------
+		// ----- Sky & Sun ------------------------------------------------
 		sun.Init("assets/shaders/Sun.glsl");
+		skyShader.load("assets/shaders/Sky.glsl");
 
 		// Spawn 4 threads for loading chunks and 4 threads for generating meshes
 		// This is the optimal spot for good performance without overly increasing number of threads
@@ -229,8 +231,8 @@ public:
 		if (!bIsPaused)
 			dayCycle.Update(dt);
 
-		const glm::vec3 skyColor = dayCycle.SkyColor();
-		glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+		const glm::vec3 horizon = dayCycle.HorizonColor();
+		glClearColor(horizon.r, horizon.g, horizon.b, 1.0f);
 
 		// Default skycolor used before introducing day-night cycle
 		//glClearColor(0.227f, 0.757f, 1.0f, 1.0f);
@@ -362,12 +364,33 @@ public:
 
 		// Day/night: per-frame uniforms only, world/lighting state untouched
 		const glm::vec3 lightDir = dayCycle.LightDir();
-		chunkMeshShader.setVec3("u_lightDir", lightDir);
+		//chunkMeshShader.setVec3("u_lightDir", lightDir);
+		chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
 		chunkMeshShader.setFloat("u_skyFactor", dayCycle.SkyFactor());
 		chunkMeshShader.setFloat("u_minLight", minLight);
 
+		// SKy gradient + sunset fan
+		{
+			const glm::mat4 skyView = glm::mat4(glm::mat3(camera.getLookAt()));
+
+			glDisable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+
+			skyShader.use();
+			skyShader.setMat4("uInvViewProj", skyView);
+			skyShader.setVec3("uZenithColor", dayCycle.ZenithColor());
+			skyShader.setVec3("uHorizonColor", dayCycle.HorizonColor());
+			skyShader.setVec3("uSunDir", dayCycle.SunDir());
+			skyShader.setVec4("uSunsetColor", dayCycle.SunsetColor());
+
+			quadVAO.bind();
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glDepthMask(GL_TRUE);
+			glEnable(GL_DEPTH_TEST);
+		}
 		// Draw the sun
-		sun.Draw(camera.position, lightDir);
+		sun.Draw(camera.position, -dayCycle.SunDir());
 
 		// Draw world
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
@@ -490,7 +513,7 @@ public:
 
 		ImGui::SliderFloat("Time of day", &dayCycle.time, 0.0f, 0.999f);
 		ImGui::Checkbox("Pause time", &dayCycle.paused);
-		ImGui::SliderFloat("Min light", &minLight, 0.0f, 3.0f);
+		ImGui::SliderFloat("Min light", &minLight, 0.0f, 0.3f);
 
 		ImGui::End();
 		ImGui::Render();
@@ -597,9 +620,8 @@ public:
 	void InitShaders()
 	{
 		chunkMeshShader.use();
-		// This is now done by the day-night cycle
-		//chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
-		chunkMeshShader.setVec3("u_ambient", glm::vec3(0.25f));
+		// "u_lightDir" is now done by the day-night cycle
+		chunkMeshShader.setVec3("u_ambient", glm::vec3(0.3f));
 		chunkMeshShader.setVec3("u_diffuse", glm::vec3(0.7f));
 	}
 
@@ -704,7 +726,7 @@ int main()
 }
 
 /*
-* TBA in Github:
+* To be added in Github:
 * https://www.reddit.com/r/gamedev/comments/2iru8i/fast_flood_fill_lighting_in_a_blocky_voxel_game/
 * https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
 * https://learnopengl.com/

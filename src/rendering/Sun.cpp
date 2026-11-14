@@ -41,15 +41,16 @@ void Sun::Init(const std::string& shaderFile)
 
 void Sun::Draw(const glm::vec3& cameraPos, const glm::vec3& lightDir)
 {
+	if (lightDir.y > 0.1f)
+		return;
 	const glm::vec3 toSun = -glm::normalize(lightDir);
 
 	// Camera-anchored -> no parallax, reads as infinitely far
 	const glm::vec3 sunPos = cameraPos + toSun * distance;
 
-	// Edges follow the orbit (DayCycle orbits around world Z), like MC's sky-fixed quad.
-	// toSun.z <= ~0.29 due to orbit tilt, so the cross never degenerates.
-	const glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), toSun));
-	const glm::vec3 up = glm::cross(toSun, right);
+	// Sun orbits in XY plane, Z is normal to sun's direction, never degenerate
+	const glm::vec3 right = glm::normalize(glm::cross(toSun, glm::vec3(0.0f, 0.0f, 1.0f)));
+	const glm::vec3 up = glm::cross(right, toSun);
 
 	// Sun is always drawn before the terrain with no depth - terrain overdraws it
 	glDisable(GL_DEPTH_TEST);

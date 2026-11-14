@@ -1539,6 +1539,7 @@
     <None Include="assets\shaders\ASCII.glsl" />
     <None Include="CrabbyGL.exe" />
     <None Include="assets\shaders\Sun.glsl" />
+    <None Include="assets\shaders\Sky.glsl" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="libraries\glfw3.lib" />
