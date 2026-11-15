@@ -375,6 +375,16 @@ public:
 		chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
 		chunkMeshShader.setFloat("u_skyFactor", dayCycle.SkyFactor());
 		chunkMeshShader.setFloat("u_minLight", minLight);
+		
+		// Fog
+		const float fogEnd = glm::max(static_cast<float>(world.GetViewDist() * CX - 24), 8.0f);
+		chunkMeshShader.setVec3("u_cameraPos", camera.position);
+		chunkMeshShader.setFloat("u_fogEnd", fogEnd);
+		chunkMeshShader.setFloat("u_fogStart", fogEnd * 0.7f);
+		chunkMeshShader.setVec3("u_zenithColor", dayCycle.ZenithColor());
+		chunkMeshShader.setVec3("u_horizonColor", dayCycle.HorizonColor());
+		chunkMeshShader.setVec3("u_sunDir", dayCycle.SunDir());
+		chunkMeshShader.setVec4("u_sunsetColor", dayCycle.SunsetColor());
 
 		// Sky gradient + sunset fan
 		{

@@ -125,6 +125,9 @@ public:
 	// 4) Draw all generated meshes - final call
     void DrawAll(const glm::mat4& proj, const glm::mat4& view);
 
+    // Fog radius must be equal to view radius, this is because the renderer reads it every frame
+    [[nodiscard]] int GetViewDist() const noexcept { return m_viewDist; }
+
     // Worker thread loops
     void StartChunkLoadWorkers(int count);
     void StartMeshWorkers(int count = 2);
@@ -151,8 +154,8 @@ private:
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 3;
-    int m_unloadDist = 5;
+    int m_viewDist = 17;
+    int m_unloadDist = 20;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 
@@ -166,7 +169,7 @@ private:
     // Returns height at location using Perlin noise
     [[nodiscard]] static float GetTerrainHeight(int wx, int wz);
 
-    // Chunk streaming functionss
+    // Chunk streaming functions
     [[nodiscard]] static std::string ChunkFilePath(glm::ivec2 coord);
     static void SaveChunkToDisk(const Chunk& chunk);
     static bool LoadChunkFromDisk(Chunk& chunk, glm::ivec2& coord);

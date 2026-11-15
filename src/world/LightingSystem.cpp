@@ -168,7 +168,7 @@ void LightingSystem::BuildLocalLight(Chunk& chunk)
 		{
 			const int nx = x + nd.x, ny = y + nd.y, nz = z + nd.z;
 
-			if (!Chunk::InBounds(x, y, z) || IsOpaque(chunk.GetUnchecked(nx, ny, nz)))
+			if (!Chunk::InBounds(nx, ny, nz) || IsOpaque(chunk.GetUnchecked(nx, ny, nz)))
 				continue;
 
 			const bool down15 = (nd.y == -1 && level == 15);

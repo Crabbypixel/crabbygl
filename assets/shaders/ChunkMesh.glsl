@@ -82,6 +82,16 @@ uniform ivec3 u_selectedBlock;
 // Runtime feature toggles
 uniform bool u_isAOEnabled;
 
+// Sky and fog
+uniform vec3 u_cameraPos;
+uniform float u_fogStart;
+uniform float u_fogEnd;
+
+uniform vec3 u_zenithColor;
+uniform vec3 u_horizonColor;
+uniform vec3 u_sunDir;
+uniform vec4 u_sunsetColor;
+
 in vec3  fWorldPos;
 in vec2  fUV;
 in vec3  fTint;
@@ -121,6 +131,22 @@ vec2 tileUV(vec2 tileLocal, vec2 tileMin, vec2 tileMax)
 ivec3 fragBlockPos()
 {
     return ivec3(floor(fWorldPos - NORMALS[fNormalIndex] * 0.01f));
+}
+
+// This mirrors Sky.glsl's main() (except the stars), any drift shows a seam
+vec3 SkyColor(vec3 dir)
+{
+    float up = clamp(dir.y, 0.0f, 1.0f);
+    vec3 color = mix(u_horizonColor, u_zenithColor, sqrt(up));
+    
+    float dLen = length(dir.xz);
+    float sLen = length(u_sunDir.xz);
+    float facing = (dLen > 1e-4f && sLen > 1e-4f) ? dot(dir.xz / dLen, u_sunDir.xz / sLen) : 0.0f;
+    float side = max(facing, 0.0f);
+    side *= side;
+    
+    float band = 1.0f - smoothstep(0.0f, 0.5f, abs(dir.y));
+    return mix(color, u_sunsetColor.rgb, u_sunsetColor.a * side * band);
 }
 
 // Atlas tile lookup (16x16 atlas)
@@ -211,6 +237,11 @@ void main()
         else
             color *= 1.2f;
     }
+
+    // Horizontal distance only, no fog at increasing height
+    vec3 toFrag = fWorldPos - u_cameraPos;
+    float fog = smoothstep(u_fogStart, u_fogEnd, length(toFrag.xz));
+    color = mix(color, SkyColor(normalize(toFrag)), fog);
 
     //FragColor = vec4(color, baseTex.a);
     float finalAlpha = fAlpha * baseTex.a;
