@@ -69,8 +69,9 @@ private:
 
 	// Sky
 	Sun sun;
+	Sun moon;
 	DayNightCycle dayCycle;
-	float minLight = 0.06f;
+	float minLight = 0.3f;
 
 	// Chunk outlines for debugging
 	ChunkDebug chunkDebug;
@@ -139,9 +140,15 @@ public:
 		world.SetChunkShader(chunkMeshShader);
 		world.LoadAtlasTexture("assets/textures/textures.png");
 
-		// ----- Sky & Sun ------------------------------------------------
+		// ----- Sky, Sun & Moon ------------------------------------------------
 		sun.Init("assets/shaders/Sun.glsl");
+		moon.Init("assets/shaders/Sun.glsl");
 		skyShader.load("assets/shaders/Sky.glsl");
+
+		moon.size = 20.0f;
+		moon.coreColor = glm::vec3(0.85f, 0.88f, 0.95f);	// Pale blue-white
+		moon.color = glm::vec3(0.6f, 0.65f, 0.8f);			// Cool halo
+		moon.haloStrength = 0.08f;
 
 		// Spawn 4 threads for loading chunks and 4 threads for generating meshes
 		// This is the optimal spot for good performance without overly increasing number of threads
@@ -369,19 +376,22 @@ public:
 		chunkMeshShader.setFloat("u_skyFactor", dayCycle.SkyFactor());
 		chunkMeshShader.setFloat("u_minLight", minLight);
 
-		// SKy gradient + sunset fan
+		// Sky gradient + sunset fan
 		{
+			// This converts camera space coords containing rotation but no translation
 			const glm::mat4 skyView = glm::mat4(glm::mat3(camera.getLookAt()));
 
 			glDisable(GL_DEPTH_TEST);
 			glDepthMask(GL_FALSE);
 
 			skyShader.use();
-			skyShader.setMat4("uInvViewProj", skyView);
+			skyShader.setMat4("uInvViewProj", glm::inverse(matProjection * skyView));
 			skyShader.setVec3("uZenithColor", dayCycle.ZenithColor());
 			skyShader.setVec3("uHorizonColor", dayCycle.HorizonColor());
 			skyShader.setVec3("uSunDir", dayCycle.SunDir());
 			skyShader.setVec4("uSunsetColor", dayCycle.SunsetColor());
+			skyShader.setFloat("uSkyAngle", dayCycle.CelestialAngle());
+			skyShader.setFloat("uStarStrength", dayCycle.StarStrength());
 
 			quadVAO.bind();
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -389,8 +399,10 @@ public:
 			glDepthMask(GL_TRUE);
 			glEnable(GL_DEPTH_TEST);
 		}
-		// Draw the sun
+
+		// Draw sun & moon
 		sun.Draw(camera.position, -dayCycle.SunDir());
+		moon.Draw(camera.position, dayCycle.SunDir());		// Draw opposite of sun
 
 		// Draw world
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
@@ -499,6 +511,7 @@ public:
 		ImGui::Text("Raycast place position: %d %d %d", raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
 		ImGui::Text("Chunk borders (G to toggle): %s", chunkDebug.visible ? "Enabled" : "Disabled");
 		ImGui::Text("AO: %s", isAOEnabled ? "Enabled" : "Disabled");
+		ImGui::Text("Solar angle: %d degrees", static_cast<int>(std::round(dayCycle.CelestialAngle() * 180 / PI)));
 
 		static int teleportX = 0;
 		static int teleportY = 0;
@@ -513,7 +526,7 @@ public:
 
 		ImGui::SliderFloat("Time of day", &dayCycle.time, 0.0f, 0.999f);
 		ImGui::Checkbox("Pause time", &dayCycle.paused);
-		ImGui::SliderFloat("Min light", &minLight, 0.0f, 0.3f);
+		ImGui::SliderFloat("Min light", &minLight, 0.05f, 1.0f);
 
 		ImGui::End();
 		ImGui::Render();
@@ -613,6 +626,10 @@ public:
 		// Toggle AO
 		if (GetKey('H').bPressed)
 			isAOEnabled = !isAOEnabled;
+
+		// Toggle daycycle update
+		if (GetKey('L').bPressed)
+			dayCycle.paused = !dayCycle.paused;
 
 		RequestCursor(bIsPaused || inventory.IsOpen());
 	}

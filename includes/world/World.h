@@ -146,13 +146,13 @@ private:
     LightingSystem m_lightingSystem;
 
     // Chunk coordinates with lighting initialization are postponed until their neighbors are loaded into the map
-    std::unordered_set<glm::ivec2, IVec2Hash> m_deferredLightingChunks;
+    //std::unordered_set<glm::ivec2, IVec2Hash> m_deferredLightingChunks;
 
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 6;
-    int m_unloadDist = 8;
+    int m_viewDist = 3;
+    int m_unloadDist = 5;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 

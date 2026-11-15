@@ -12,8 +12,8 @@ void DayNightCycle::Update(float dt)
 // World -> sun, rises at +X, sets at -X, exactly in the XY plane (Z = 0)
 glm::vec3 DayNightCycle::SunDir() const
 {
-    float a = (time - 0.25f) * glm::two_pi<float>();   // Zero at sunrise
-    return glm::vec3(std::cosf(a), std::sinf(a), 0.0f);
+    float a = CelestialAngle();   // Zero at sunrise
+    return glm::vec3(std::cos(a), std::sin(a), 0.0f);
 }
 
 // Shading only: small Z tilt so side faces aren't all NdotL = 0 at noon
@@ -68,8 +68,21 @@ glm::vec4 DayNightCycle::SunsetColor() const
         return glm::vec4(0.0f);
 
     const float f = h / RANGE * 0.5f + 0.5f;    // 0 -> sun below, 1 -> sun above
-    float strength = 1.0f - (1.0f - std::sinf(f * glm::pi<float>())) * 0.99f;
+    float strength = 1.0f - (1.0f - std::sin(f * glm::pi<float>())) * 0.99f;
     strength *= strength;
 
     return glm::vec4(f * 0.3f + 0.7f, f * f * 0.7f + 0.2f, 0.2f, strength);
+}
+
+// Sun's angle on its orbit, 0 at sunrise
+// Stars rotate by the same angle so the whole sky rotates as one
+float DayNightCycle::CelestialAngle() const
+{
+    return (time - 0.25f) * glm::two_pi<float>();
+}
+
+float DayNightCycle::StarStrength() const
+{
+    const float n = 1.0f - SkyFactor();
+    return (n * n);
 }

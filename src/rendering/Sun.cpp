@@ -41,8 +41,9 @@ void Sun::Init(const std::string& shaderFile)
 
 void Sun::Draw(const glm::vec3& cameraPos, const glm::vec3& lightDir)
 {
-	if (lightDir.y > 0.1f)
-		return;
+	//if (lightDir.y > 0.1f)
+	//	return;
+
 	const glm::vec3 toSun = -glm::normalize(lightDir);
 
 	// Camera-anchored -> no parallax, reads as infinitely far
@@ -64,6 +65,8 @@ void Sun::Draw(const glm::vec3& cameraPos, const glm::vec3& lightDir)
 	m_shader.setVec3("uSunUp", up);
 	m_shader.setFloat("uSunSize", size);
 	m_shader.setVec3("uSunColor", color);
+	m_shader.setVec3("uCoreColor", coreColor);
+	m_shader.setFloat("uHaloStrength", haloStrength);
 
 	glBindVertexArray(m_VAO);
 	glDrawArrays(GL_TRIANGLES, 0, 6);

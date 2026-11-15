@@ -244,7 +244,7 @@ void World::UnloadChunks()
     chunks.clear();
     m_chunkMeshes.clear();
     m_waterMeshes.clear();
-    m_deferredLightingChunks.clear();
+    //m_deferredLightingChunks.clear();
 }
 
 // ----- Raycast CRUD ------------------------------------------------
@@ -515,7 +515,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
         m_waterMeshes.erase(chunkCoord);
 
         chunks.erase(chunkCoord);
-        m_deferredLightingChunks.erase(chunkCoord);             // Remove from deferred list if out of render distance
+        //m_deferredLightingChunks.erase(chunkCoord);             // Remove from deferred list if out of render distance
     }
 
     // ----- Load ------------------------------------------------
@@ -629,48 +629,18 @@ void World::CommitGeneratedChunks()
         m_lightingSystem.InitChunkLight(chunks.find(coord)->second.get());
         m_worldPhysics.InitChunkWater(chunks.find(coord)->second.get());
 
-        // Try adding 4 neighbors
+        // Neighbors are not re-initialized: InitChunkLight seeds directions across the chunk border
         for (int i = 0; i < 4; i++)
         {
-            const glm::ivec2 neighboringChunkCoord = coord + NEIGHBORING_CHUNK_OFFSET[i];
-
-            // If this neighboring chunk is already present in coord, it will initalize itself later
-            if (queued.count(neighboringChunkCoord))
+            const glm::ivec2 nCoord = coord + NEIGHBORING_CHUNK_OFFSET[i];
+            
+            if (queued.count(nCoord))
                 continue;
 
-            auto neighboringChunk = chunks.find(neighboringChunkCoord);
-            if (neighboringChunk != chunks.end())
-            {
-                m_lightingSystem.InitChunkLight(neighboringChunk->second.get());
-                m_worldPhysics.InitChunkWater(neighboringChunk->second.get());
-            }
-            else
-            {
-                // Deferred loading, add the coord to the vector to be loaded later
-                m_deferredLightingChunks.insert(neighboringChunkCoord);
-            }
+            auto n = chunks.find(nCoord);
+            if (n != chunks.end())
+                m_worldPhysics.InitChunkWater(n->second.get());
         }
-
-        // Load deferred lighting chunks, remove from list if light initalization successful
-        std::erase_if(m_deferredLightingChunks, [&](const glm::ivec2& deferredCoord) {
-            // This chunk has just been light initalized, remove it from deferred list
-            if (deferredCoord == coord)
-                return true;
-
-            // If coord is present in queued, don't remove
-            // as its light will be initalized later
-            if (queued.count(deferredCoord))
-                return false;
-
-            auto it = chunks.find(deferredCoord);
-            if (it != chunks.end())
-            {
-                m_lightingSystem.InitChunkLight(it->second.get());
-                m_worldPhysics.InitChunkWater(it->second.get());
-                return true;
-            }
-            return false;
-        });
 
         // Re-dirty all 8 neighbours NOW (after chunks have been loaded) that 
         // this chunk is actually in the live map, UpdateChunkStreaming 
@@ -708,6 +678,11 @@ void World::CommitGeneratedChunks()
 
         m_chunkLoadReservations.erase(coord);
     }
+
+    // Drain border seeds NOW so SyncRenderer meshes fully lit chunks (no dark first mesh, no double mesh),
+    // and so the lighting queues never carry Chunk* across next frame's unload
+    if(!queued.empty())
+        m_lightingSystem.Update();
 }
 
 void World::SyncRenderer()
@@ -932,6 +907,9 @@ void World::ChunkLoadWorkerLoop()
 
         // No need to lock this, no shared resource used in this function
         FillChunk(*chunk, coord);
+
+        // Initalize lighting
+        LightingSystem::BuildLocalLight(*chunk);
 
         // Move the chunk to staged section and remove the coord from queue
         {

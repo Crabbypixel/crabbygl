@@ -37,6 +37,9 @@ private:
 
 	std::unordered_set<Chunk*> m_visitedChunks;
 
+	Chunk* m_lastVisited = nullptr;
+	void MarkVisited(Chunk* c);
+
 	// Non-copyable, non-movable
 	LightingSystem(const LightingSystem&) = delete;
 	LightingSystem(LightingSystem&&) = delete;
@@ -64,6 +67,7 @@ public:
 	LightingSystem(World* world) : m_world(world) {}
 
 	void InitChunkLight(Chunk* chunk);
+	static void BuildLocalLight(Chunk& chunk);	// Worker-side, chunk must be exclusively owned by the caller
 
 	void NotifyBlockPlaced(int wx, int wy, int wz, BlockType type);
 	void NotifyBlockRemoved(int wx, int wy, int wz);

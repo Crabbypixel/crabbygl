@@ -28,6 +28,8 @@ in vec2 fUV;
 out vec4 FragColor;
 
 uniform vec3 uSunColor;
+uniform vec3 uCoreColor;
+uniform float uHaloStrength;
 
 const float PIXELS = 16.0f;	// Pixel-art resolution across the whole quad
 const float CORE = 0.6f;
@@ -41,9 +43,10 @@ void main()
 	float d = max(abs(p.x), abs(p.y));
 
 	float core = step(d, CORE);
-	float halo = (1.0f - smoothstep(CORE, 1.0f, d)) * 0.2f;
+	float halo = (1.0f - smoothstep(CORE, 1.0f, d)) * uHaloStrength;
 
-	vec3 haloColor = uSunColor * vec3(1.0f, 0.85f, 0.5f);
-	FragColor = vec4(mix(haloColor, vec3(1.0f), core), max(core, halo));
+	// uSunColor is the halo color, uCoreColor is the core color -> allows both
+	// Sun and Moon to be drawn using a single shader
+	FragColor = vec4(mix(uSunColor, uCoreColor, core), max(core, halo));
 }
 #endif

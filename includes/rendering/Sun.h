@@ -20,7 +20,10 @@ public:
 	
 	float distance = 400.0f;	// Distance from camera to sun
 	float size = 30.0f;			// Size of the sun
-	glm::vec3 color = glm::vec3(1.0f, 0.95f, 0.8f);
+
+	glm::vec3 color = glm::vec3(1.0f, 0.81f, 0.4f);		// Halo color
+	glm::vec3 coreColor = glm::vec3(1.0f);				// Disc color
+	float haloStrength = 0.2f;
 
 private:
 	unsigned int m_VAO = 0;
