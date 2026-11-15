@@ -241,7 +241,7 @@ void main()
     // Horizontal distance only, no fog at increasing height
     vec3 toFrag = fWorldPos - u_cameraPos;
     float fog = smoothstep(u_fogStart, u_fogEnd, length(toFrag.xz));
-    color = mix(color, SkyColor(normalize(toFrag)), fog);
+    color = mix(color, SkyColor(normalize(toFrag)), fog);       // Blend terrain color & sky color to obtain fogged pixel (fog present depending on dist)
 
     //FragColor = vec4(color, baseTex.a);
     float finalAlpha = fAlpha * baseTex.a;
