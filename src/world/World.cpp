@@ -802,8 +802,6 @@ void World::DrawAll(const glm::mat4& proj, const glm::mat4& view)
         mesh.Draw();
     }
 
-    m_frustum.Extract(proj * view);
-
     glEnable(GL_BLEND);
     glDepthMask(GL_FALSE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -825,7 +823,7 @@ void World::DrawAll(const glm::mat4& proj, const glm::mat4& view)
             continue;
 
         const glm::vec2 center = { chunkPos.x * CX + CX * 0.5f, chunkPos.y * CZ + CZ * 0.5f };
-        const glm::vec2 d = center - glm::vec2(camPos.x, camPos.y);
+        const glm::vec2 d = center - glm::vec2(camPos.x, camPos.z);
         m_waterDrawList.push_back({ glm::dot(d, d), &mesh });
     }
 
