@@ -222,6 +222,7 @@ void WorldPhysics::TickWater()
 	// Swap first: everything collected since the last step is this step's work, and anything this step 
 	// dirties lands in the fresh set for the next step, similar to sand/gravel physics
 	std::swap(m_waterDirty, m_nextWaterDirty);
+	m_nextWaterDirty.clear();
 
 	// Phase 1: Evaulate against pre-step world, no writes here
 	for (const glm::ivec3& pos : m_waterDirty)
