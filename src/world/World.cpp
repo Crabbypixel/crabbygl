@@ -265,13 +265,6 @@ bool World::PlaceBlock(const RaycastHit& hit, BlockType type)
     if (IsSolid(target.x, target.y, target.z))
         return false;
 
-    // If hit block type is water, then set the block there directly
-    if (IsWater(hitBlockType))
-    {
-        SetBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, type);
-        return true;
-    }
-
     // Log blocks have directional variants based on placement face
     const bool isLog = type == BlockType::TREE_LOG_Y ||
                        type == BlockType::TREE_LOG_X ||
@@ -627,20 +620,9 @@ void World::CommitGeneratedChunks()
         // Build light values for present chunk and 4 neighboring chunks
         // Add current chunk
         m_lightingSystem.InitChunkLight(chunks.find(coord)->second.get());
-        m_worldPhysics.InitChunkWater(chunks.find(coord)->second.get());
 
-        // Neighbors are not re-initialized: InitChunkLight seeds directions across the chunk border
-        for (int i = 0; i < 4; i++)
-        {
-            const glm::ivec2 nCoord = coord + NEIGHBORING_CHUNK_OFFSET[i];
-            
-            if (queued.count(nCoord))
-                continue;
-
-            auto n = chunks.find(nCoord);
-            if (n != chunks.end())
-                m_worldPhysics.InitChunkWater(n->second.get());
-        }
+        // Neighbors must NOT be re-initialized
+        m_worldPhysics.OnChunkLoaded(*chunks.find(coord)->second);
 
         // Re-dirty all 8 neighbours NOW (after chunks have been loaded) that 
         // this chunk is actually in the live map, UpdateChunkStreaming 
@@ -826,10 +808,32 @@ void World::DrawAll(const glm::mat4& proj, const glm::mat4& view)
     glDepthMask(GL_FALSE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // Since depth writes are off, blend order is now draw order: nearer water gets painted
+    // over farther water. Per chunk sort is enough because water-water faces are culled
+    const glm::vec3 camPos = glm::vec3(glm::inverse(view)[3]);
+
+    m_waterDrawList.clear();
     for (auto& [chunkPos, mesh] : m_waterMeshes)
     {
-        mesh.Draw();
+        if (!mesh.vertexCount)
+            continue;
+
+        const glm::vec3 minP = { chunkPos.x * CX, 0, chunkPos.y * CZ };
+        const glm::vec3 maxP = { chunkPos.x * CX + CX, CY, chunkPos.y * CZ + CZ };
+
+        if (!m_frustum.ContainsAABB(minP, maxP))
+            continue;
+
+        const glm::vec2 center = { chunkPos.x * CX + CX * 0.5f, chunkPos.y * CZ + CZ * 0.5f };
+        const glm::vec2 d = center - glm::vec2(camPos.x, camPos.y);
+        m_waterDrawList.push_back({ glm::dot(d, d), &mesh });
     }
+
+    std::sort(m_waterDrawList.begin(), m_waterDrawList.end(),
+        [](const auto& a, const auto& b) { return a.first > b.first; });
+    
+    for (const auto& [dist2, mesh] : m_waterDrawList)
+        mesh->Draw();
 
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);

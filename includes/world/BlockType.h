@@ -31,6 +31,13 @@ enum class BlockType : uint8_t
 	/*25*/  TREE_LOG_Z,
 	/*26*/  GLOWSTONE,
 	/*27*/  WATER,
-	/*28*/  WATER_FLOWING,
+	/*28*/  WATER_FLOWING_1,
+	/*29*/  WATER_FLOWING_2,
+	/*30*/  WATER_FLOWING_3,
+	/*31*/  WATER_FLOWING_4,
+	/*32*/	WATER_FLOWING_5,
+	/*33*/	WATER_FLOWING_6,
+	/*34*/	WATER_FLOWING_7,
+	/*35*/	WATER_FALLING,		// Fed from above, spreads like a source once it lands
 	MAX_VALUE			// Ending sentinel - not a real block type, used for validation and iteration
 };

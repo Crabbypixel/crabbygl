@@ -310,7 +310,7 @@ public:
 
 			if (isBlockBreakValid)
 			{	
-				world.GetWorldPhysics().NotifyBlockRemoved(raycastHitPos.x, raycastHitPos.y, raycastHitPos.z);
+				world.GetWorldPhysics().NotifyBlockChanged(raycastHitPos.x, raycastHitPos.y, raycastHitPos.z);
 				world.GetLightingSystem().NotifyBlockRemoved(raycastHitPos.x, raycastHitPos.y, raycastHitPos.z);
 			}
 		}
@@ -322,17 +322,15 @@ public:
 
 			if (isBlockPlaceValid)
 			{
-				world.GetWorldPhysics().NotifyBlockRemoved(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
-
-				if (inventory.GetHeldBlock() == BlockType::WATER)
-					world.GetWorldPhysics().NotifyWaterSourcePlaced(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
-
+				world.GetWorldPhysics().NotifyBlockChanged(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
 				world.GetLightingSystem().NotifyBlockPlaced(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z, inventory.GetHeldBlock());
 			}
 		}
 
 		// Update world physics & world lighting
-		world.GetWorldPhysics().Update(dt);
+		if(!bIsPaused)
+			world.GetWorldPhysics().Update(dt);
+
 		world.GetLightingSystem().Update();
 
 		// ----- Rendering ------------------------------------------------

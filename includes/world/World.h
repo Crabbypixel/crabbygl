@@ -138,6 +138,7 @@ private:
 	// Each chunk (chunk coord) has a corresponding chunk mesh
     std::unordered_map<glm::ivec2, ChunkMesh, IVec2Hash> m_chunkMeshes;
     std::unordered_map<glm::ivec2, ChunkMesh, IVec2Hash> m_waterMeshes;
+    std::vector<std::pair<float, const ChunkMesh*>> m_waterDrawList;
     Shader* m_chunkShader = nullptr;
     unsigned int m_atlasTexture = 0;
 
