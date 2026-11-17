@@ -22,7 +22,7 @@ public:
     static constexpr float TICK_RATE = 20.0f;           // 20 ticks per second
 	static constexpr float TICK_DT = 1.0f / TICK_RATE;
     static constexpr int MAX_FLOW_DIST = 7;            // Flowing water reaches 7 cells from a source/falling water
-    static constexpr int WATER_TICK_INTERVAL = 1;      // Update water every Nth physics tick, increase later
+    static constexpr int WATER_TICK_INTERVAL = 10;      // Update water every Nth physics tick, increase later
 
 	// Call every frame with real delta time, but physics will only update at fixed intervals (TICK_DT)
 	void Update(float dt);
@@ -83,6 +83,7 @@ private:
     void ComputeOutflow(const glm::ivec3& p, BlockType state);                    // Compute water flow
     void ProposeWrite(const glm::ivec3& p, BlockType type);                       // Propose a write, checks and resolves if two or more flows clash
     void DirtyWaterAround(const glm::ivec3& p);                                   // Dirty water around for water physics
+    [[nodiscard]] BlockType ComputeWaterState(const glm::ivec3& p) const;
 
 	// Returns true if the block type is affected by gravity (e.g. sand, gravel)
 	[[nodiscard]] static bool IsGravityBlock(BlockType type) noexcept;

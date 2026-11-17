@@ -155,8 +155,8 @@ private:
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 17;
-    int m_unloadDist = 20;
+    int m_viewDist = 5;
+    int m_unloadDist = 5;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 

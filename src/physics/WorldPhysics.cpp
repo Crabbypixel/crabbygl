@@ -4,6 +4,8 @@
 #include "world/BlockRegistry.h"
 
 #include <iostream>
+#include <climits>
+#include <algorithm>
 
 namespace
 {
@@ -152,7 +154,58 @@ BlockType WorldPhysics::Read(const glm::ivec3& p) const
 
 void WorldPhysics::OnChunkLoaded(const Chunk& chunk)
 {
-	(void)chunk;
+	// Renderer thread is the only writer, so unlocked reads of this chunk and its neighbours are race-free here
+	const int baseX = chunk.chunkPos.x * CX;
+	const int baseZ = chunk.chunkPos.y * CZ;
+
+	// Interior-only check; border cells are woken unconditionally below
+	auto isOpenAround = [&](int x, int y, int z)
+	{
+		if (y > 0	   && IsReplaceable(chunk.GetUnchecked(x, y - 1, z))) return true;
+		if (x > 0	   && IsReplaceable(chunk.GetUnchecked(x - 1, y, z))) return true;
+		if (x < CX - 1 && IsReplaceable(chunk.GetUnchecked(x + 1, y, z))) return true;
+		if (z > 0	   && IsReplaceable(chunk.GetUnchecked(x, y, z - 1))) return true;
+		if (z < CZ - 1 && IsReplaceable(chunk.GetUnchecked(x, y, z + 1))) return true;
+		return false;
+	};
+
+	for (int y = 0; y < CY; ++y)
+	for (int x = 0; x < CX; ++x)
+	for (int z = 0; z < CZ; ++z)
+	{
+		const BlockType t = chunk.GetUnchecked(x, y, z);
+		if (!IsWater(t))
+			continue;
+
+		const bool onBorder = (x == 0 || x == CX - 1 || z == 0 || z == CZ - 1);
+
+		// Flowing water from disk keeps its level (it's in the id) but must re-verify its feed;
+		// stable cells cost one evaluation and drop out. Deep ocean sources are never touched
+		if (!IsSource(t) || onBorder || isOpenAround(x, y, z))
+			m_nextWaterDirty.insert({ baseX + x, y, baseZ + z });
+	}
+
+	// Water in already-loaded neighbours that touches this chunk saw a wall (Read) until now
+	auto wakeColumn = [&](const glm::ivec2& nCoord, int lx0, int lx1, int lz0, int lz1)
+	{
+		const Chunk* n = m_world->GetChunk(nCoord.x * CX, nCoord.y * CZ);
+		if (!n)
+			return;
+
+		for (int y = 0; y < CY; ++y)
+		for (int x = lx0; x <= lx1; ++x)
+		for (int z = lz0; z <= lz1; ++z)
+		{
+			if (IsWater(n->GetUnchecked(x, y, z)))
+				m_nextWaterDirty.insert({ nCoord.x * CX + x, y, nCoord.y * CZ + z });
+		}
+	};
+
+	const glm::ivec2 c = chunk.chunkPos;
+	wakeColumn(c + glm::ivec2(-1, 0), CX - 1, CX - 1,      0, CZ - 1);	// -X neighbour: its x = 15 face
+	wakeColumn(c + glm::ivec2(1,  0),      0,      0,      0, CZ - 1);	// +X neighbour: its x = 0 face
+	wakeColumn(c + glm::ivec2(0, -1),      0, CX - 1, CZ - 1, CZ - 1);	// -Z neighbour: its z = 15 face
+	wakeColumn(c + glm::ivec2(0,  1),      0, CX - 1,      0,	   0);		// +Z neighbour: its z = 0 face
 }
 
 void WorldPhysics::DirtyWaterAround(const glm::ivec3& p)
@@ -231,7 +284,13 @@ void WorldPhysics::TickWater()
 		if (!IsWater(currentCell))		// Air cells get water through their neighbors' outflow
 			continue;
 
-		ComputeOutflow(pos, currentCell);
+		// Sources are fixed, everything else re-derives its state from its neighbors
+		const BlockType	state = IsSource(currentCell) ? currentCell : ComputeWaterState(pos);
+		if (state != currentCell)
+			ProposeWrite(pos, state);		// May be air, loses to any neighbor feeding this cell
+
+		else if (state != BlockType::AIR)
+			ComputeOutflow(pos, state);		// Push from the NEW state, so a weakening cell pushes weaker water
 	}
 	m_waterDirty.clear();
 
@@ -248,4 +307,32 @@ void WorldPhysics::TickWater()
 		DirtyWaterAround(pos);
 	}
 	m_waterWrites.clear();
+}
+
+BlockType WorldPhysics::ComputeWaterState(const glm::ivec3& p) const
+{
+	/* Works using pull model: A non-source cell is whatever the neighbors can sustain.
+	*  Removing a source therefore drains its flow one step at a time with no BFS, and
+	*  two sources feeding one cell never fight, it is already resolved previously.
+	* */
+
+	if (IsWater(Read(p + UP)))
+		return BlockType::WATER_FALLING;
+
+	int best = INT_MAX;
+	for (const auto& d : HORIZONTAL)
+	{
+		const glm::ivec3 n = p + d;
+		const BlockType t = Read(n);
+
+		// Only neighbors that actually spread sideways can feel this cell: a neighbor that is
+		// falling through air or flowing on top of water doesn't push water out to its sides
+		if (IsWater(t) && SpreadSideways(n, t))
+			best = std::min(best, FlowDistance(t));
+	}
+
+	if (best == INT_MAX || best + 1 > MAX_FLOW_DIST)
+		return BlockType::AIR;
+
+	return MakeFlowing(best + 1);
 }
