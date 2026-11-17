@@ -152,6 +152,8 @@
     <ClCompile Include="externals\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="externals\imgui\imgui_tables.cpp" />
     <ClCompile Include="externals\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="src\world\DayNightCycle.cpp" />
+    <ClCompile Include="src\rendering\Sun.cpp" />
     <ClCompile Include="src\world\LightingSystem.cpp" />
     <ClCompile Include="src\debug\ChunkDebug.cpp" />
     <ClCompile Include="src\physics\WorldPhysics.cpp" />
@@ -485,6 +487,7 @@
     <ClInclude Include="includes\rendering\BufferLayout.h" />
     <ClInclude Include="includes\rendering\ChunkMesh.h" />
     <ClInclude Include="includes\rendering\IndexBuffer.h" />
+    <ClInclude Include="includes\rendering\Sun.h" />
     <ClInclude Include="includes\rendering\Texture2D.h" />
     <ClInclude Include="includes\rendering\UIRenderer.h" />
     <ClInclude Include="includes\utils\Random.h" />
@@ -500,6 +503,7 @@
     <ClInclude Include="includes\world\BlockType.h" />
     <ClInclude Include="includes\world\Chunk.h" />
     <ClInclude Include="includes\world\ChunkMeshBuilder.h" />
+    <ClInclude Include="includes\world\DayNightCycle.h" />
     <ClInclude Include="includes\world\LightingSystem.h" />
     <ClInclude Include="includes\world\Raycast.h" />
     <ClInclude Include="includes\rendering\Vertex.h" />
@@ -516,7 +520,8 @@
     <None Include="assets\shaders\Hotbar_Selector.glsl" />
     <None Include="assets\shaders\Icons.glsl" />
     <None Include="assets\shaders\Inventory.glsl" />
-    <None Include="assets\shaders\WaterMesh.glsl" />
+    <None Include="assets\shaders\Sky.glsl" />
+    <None Include="assets\shaders\Sun.glsl" />
     <None Include="CrabbyGL.exe" />
     <None Include="externals\glm\detail\func_common.inl" />
     <None Include="externals\glm\detail\func_common_simd.inl" />
@@ -669,6 +674,8 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="assets\CrabbyGL.png" />
+    <Image Include="assets\greedy_glowstone.png" />
+    <Image Include="assets\greedy_uniform.png" />
     <Image Include="assets\textures\ascii.png" />
     <Image Include="assets\textures\hotbar.png" />
     <Image Include="assets\textures\hotbar_selector.png" />

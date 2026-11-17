@@ -1,9 +1,8 @@
 #pragma once
 #include <glm/glm.hpp>
-#include <unordered_set>
+
 #include <unordered_map>
-#include <queue>
-#include <iostream>
+#include <unordered_set>
 
 class World;
 class Chunk;
@@ -20,12 +19,10 @@ public:
     WorldPhysics& operator=(const WorldPhysics&) = delete;
 	WorldPhysics& operator=(WorldPhysics&&) = delete;
 
-	static constexpr float TICK_RATE = 20.0f;		            // 20 ticks per second
+    static constexpr float TICK_RATE = 20.0f;           // 20 ticks per second
 	static constexpr float TICK_DT = 1.0f / TICK_RATE;
-    static constexpr int MAX_WATER_SPREAD = 7;
-
-    // Init water blocks on chunk load
-    void InitChunkWater(Chunk* chunk);
+    static constexpr int MAX_FLOW_DIST = 7;            // Flowing water reaches 7 cells from a source/falling water
+    static constexpr int WATER_TICK_INTERVAL = 1;      // Update water every Nth physics tick, increase later
 
 	// Call every frame with real delta time, but physics will only update at fixed intervals (TICK_DT)
 	void Update(float dt);
@@ -33,11 +30,7 @@ public:
 	// Call when any block is placed or broken by the player
 	void NotifyBlockChanged(int wx, int wy, int wz);
 
-    // Call when player places water source block
-    void NotifyWaterSourcePlaced(int wx, int wy, int wz);
-
-    // Call when player removes a block - handles both source and flowing water blocks
-    void NotifyBlockRemoved(int wx, int wy, int wz);
+    void OnChunkLoaded(const Chunk& chunk);
 
 private:
     World* m_world = nullptr;
@@ -66,27 +59,31 @@ private:
     };
 
     using DirtySet = std::unordered_set<glm::ivec3, IVec3Hash>;
-    using LevelMap = std::unordered_map<glm::ivec3, int, IVec3Hash>;
 
 	DirtySet m_dirtyBlocks;		// Set of block positions that changed since last physics update
 	DirtySet m_nextDirtyBlocks;	// Set of block positions that will be dirty in the next physics update
-
-    std::unordered_set<glm::ivec3, IVec3Hash> m_waterSources;   // Permanent water source positions, not moved by physics
-    LevelMap m_waterLevels;         // Spread level for each flowing block -> level 7 -> just left a source, level 0 -> stops
-
-    DirtySet m_waterDirty;     // Set of flowing water positions that changed since last physics update
-    DirtySet m_nextDirtyWater; // Set of flowing water positions that will be dirty in the next physics update
-
-    std::queue<glm::ivec3> m_waterRemovalQueue;     // Water removal BFS
 
 	// Runs one tick of physics updates, processing all blocks in m_dirtyBlocks and 
     // updating m_nextDirtyBlocks with any blocks that need to be re-evaluated on the next tick
     void Tick();
 
+    // Water:
+    int m_tickCount = 0;        // Counts ticks
+    DirtySet m_waterDirty;      // Water cells evaulated this water step
+    DirtySet m_nextWaterDirty;  // Water cells that will be dirty in the next physics update
+
+    // Final writes after one water step, after each cell has been evaulated for that physics update
+    std::unordered_map<glm::ivec3, BlockType, IVec3Hash> m_waterWrites;
+
+    // Runs one tick of water updates, similar to sand/gravel physics
     void TickWater();
-    void ProcessWaterRemoval();
+
+    [[nodiscard]] bool SpreadSideways(const glm::ivec3& p, BlockType type) const; // Returns if water can flow sideways
+    [[nodiscard]] BlockType Read(const glm::ivec3& p) const;                      // Returns air or bedrock depending on the block present at p, if not spreadable return bedrock else air
+    void ComputeOutflow(const glm::ivec3& p, BlockType state);                    // Compute water flow
+    void ProposeWrite(const glm::ivec3& p, BlockType type);                       // Propose a write, checks and resolves if two or more flows clash
+    void DirtyWaterAround(const glm::ivec3& p);                                   // Dirty water around for water physics
 
 	// Returns true if the block type is affected by gravity (e.g. sand, gravel)
 	[[nodiscard]] static bool IsGravityBlock(BlockType type) noexcept;
-    [[nodiscard]] static bool IsWaterBlock(BlockType type) noexcept;
 };

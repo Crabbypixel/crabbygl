@@ -421,7 +421,7 @@ void ChunkMeshBuilder::AddTranslucentFace(
             .tileBase    = (uint8_t)blockInfo.faces[face],
             .tileOverlay = (uint8_t)blockInfo.overlay,
             .packed      = packed,
-            .lightValue  = (!IsWater(type)) ? chunk.lightMap[chunkLocalPos.x][chunkLocalPos.y][chunkLocalPos.z] : static_cast<uint8_t>(7),
+            .lightValue  = chunk.lightMap[chunkLocalPos.x][chunkLocalPos.y][chunkLocalPos.z],
             .tint        = PackRGBA(1.0f, 1.0f, 1.0f, blockInfo.tint.a),
         });
     }

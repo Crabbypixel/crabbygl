@@ -181,7 +181,14 @@ static int GetIconIndex(BlockType t) noexcept
 		return 18;
 	case BlockType::DIAMOND_ORE:
 		return 19;
-	case BlockType::WATER_FLOWING:
+	case BlockType::WATER_FLOWING_1:
+	case BlockType::WATER_FLOWING_2:
+	case BlockType::WATER_FLOWING_3:
+	case BlockType::WATER_FLOWING_4:
+	case BlockType::WATER_FLOWING_5:
+	case BlockType::WATER_FLOWING_6:
+	case BlockType::WATER_FLOWING_7:
+	case BlockType::WATER_FALLING:
 		return 20;
 	case BlockType::WATER:
 		return 21;

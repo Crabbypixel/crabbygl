@@ -1,5 +1,5 @@
 // Important clarification: main thread here means the global renderer thread, not the main thread which deals with capturing inputs (see OpenGL_3D.h/.cpp)
-
+#pragma once
 #include <glm/glm.hpp>
 
 #include "rendering/ChunkMesh.h"
@@ -92,10 +92,10 @@ public:
     void UnloadChunks();
 
     // Load shader and texture file
-    void SetChunkShader(Shader& shader, Shader& waterShader);
+    void SetChunkShader(Shader& shader);
     void LoadAtlasTexture(const char* path);
 
-    // Block access & Chunk coord functions
+    // Block access & chunk coord functions
     [[nodiscard]] BlockType GetBlock(int worldX, int worldY, int worldZ) const;
     void SetBlock(int worldX, int worldY, int worldZ, BlockType type);
     [[nodiscard]] static glm::ivec2 ChunkCoord(float worldX, float worldZ);
@@ -125,6 +125,9 @@ public:
 	// 4) Draw all generated meshes - final call
     void DrawAll(const glm::mat4& proj, const glm::mat4& view);
 
+    // Fog radius must be equal to view radius, this is because the renderer reads it every frame
+    [[nodiscard]] int GetViewDist() const noexcept { return m_viewDist; }
+
     // Worker thread loops
     void StartChunkLoadWorkers(int count);
     void StartMeshWorkers(int count = 2);
@@ -135,8 +138,8 @@ private:
 	// Each chunk (chunk coord) has a corresponding chunk mesh
     std::unordered_map<glm::ivec2, ChunkMesh, IVec2Hash> m_chunkMeshes;
     std::unordered_map<glm::ivec2, ChunkMesh, IVec2Hash> m_waterMeshes;
+    std::vector<std::pair<float, const ChunkMesh*>> m_waterDrawList;
     Shader* m_chunkShader = nullptr;
-    Shader* m_waterShader = nullptr;
     unsigned int m_atlasTexture = 0;
 
 	// Frustum planes for Frustum Culling
@@ -146,14 +149,14 @@ private:
     WorldPhysics m_worldPhysics;
     LightingSystem m_lightingSystem;
 
-    // Chunk coordinates with lighting initialization postponed until their neighbors are loaded into the map
-    std::unordered_set<glm::ivec2, IVec2Hash> m_deferredLightingChunks;
+    // Chunk coordinates with lighting initialization are postponed until their neighbors are loaded into the map
+    //std::unordered_set<glm::ivec2, IVec2Hash> m_deferredLightingChunks;
 
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 8;
-    int m_unloadDist = 12;
+    int m_viewDist = 17;
+    int m_unloadDist = 20;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 
@@ -178,13 +181,12 @@ private:
     std::mutex m_chunkLoadJobMutex;
     std::condition_variable m_chunkLoadJobCV;
 
-    // Staging: workers push, main promotes
+    // Staging: workers push loaded chunks, main promotes
     std::unordered_map<glm::ivec2, std::unique_ptr<Chunk>, IVec2Hash> m_generatedChunkStaging;
     std::mutex m_generatedChunkStagingMutex;
 
 	// Prevents duplicate load scheduling: main thread only
     std::unordered_set<glm::ivec2, IVec2Hash> m_chunkLoadReservations;
-    std::mutex m_chunkLoadReservationsMutex;
 
 	// Chunk workers
     std::vector<std::thread> m_chunkLoadWorkers;
@@ -217,6 +219,10 @@ private:
     std::queue<std::unique_ptr<Chunk>> m_chunkSaveQueue;
     std::mutex m_chunkSaveMutex;
     std::condition_variable m_chunkSaveCV;
+
+    // Coords with a save queued or being written to disk - loading one now
+    // would read a stale or half-written chunk from disk - this prevents that
+    std::unordered_set<glm::ivec2, IVec2Hash> m_savesInFlight;
 
 	// Use a single thread for saving chunks to disk
     std::thread m_chunkSaveWorker;

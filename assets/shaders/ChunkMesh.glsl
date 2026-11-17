@@ -72,12 +72,25 @@ uniform vec3 u_lightDir;
 uniform vec3 u_ambient;
 uniform vec3 u_diffuse;
 
+uniform float u_skyFactor;      // 0 night, 1 day
+uniform float u_minLight;       // Floor when no sky and no torch
+
 // Block selection highlight
 uniform bool  u_isSelected;
 uniform ivec3 u_selectedBlock;
 
 // Runtime feature toggles
 uniform bool u_isAOEnabled;
+
+// Sky and fog
+uniform vec3 u_cameraPos;
+uniform float u_fogStart;
+uniform float u_fogEnd;
+
+uniform vec3 u_zenithColor;
+uniform vec3 u_horizonColor;
+uniform vec3 u_sunDir;
+uniform vec4 u_sunsetColor;
 
 in vec3  fWorldPos;
 in vec2  fUV;
@@ -118,6 +131,22 @@ vec2 tileUV(vec2 tileLocal, vec2 tileMin, vec2 tileMax)
 ivec3 fragBlockPos()
 {
     return ivec3(floor(fWorldPos - NORMALS[fNormalIndex] * 0.01f));
+}
+
+// This mirrors Sky.glsl's main() (except the stars), any drift shows a seam
+vec3 SkyColor(vec3 dir)
+{
+    float up = clamp(dir.y, 0.0f, 1.0f);
+    vec3 color = mix(u_horizonColor, u_zenithColor, sqrt(up));
+    
+    float dLen = length(dir.xz);
+    float sLen = length(u_sunDir.xz);
+    float facing = (dLen > 1e-4f && sLen > 1e-4f) ? dot(dir.xz / dLen, u_sunDir.xz / sLen) : 0.0f;
+    float side = max(facing, 0.0f);
+    side *= side;
+    
+    float band = 1.0f - smoothstep(0.0f, 0.5f, abs(dir.y));
+    return mix(color, u_sunsetColor.rgb, u_sunsetColor.a * side * band);
 }
 
 // Atlas tile lookup (16x16 atlas)
@@ -188,7 +217,9 @@ void main()
    float NdotL = max(dot(normalize(NORMALS[fNormalIndex]), -normalize(u_lightDir)), 0.0f);
    
    // Sky contribution: exposure × time-of-day × directional face angle
-   float sunLight = skyExposure * 1.0f * (u_diffuse.r * NdotL) * 1.0f + u_ambient.r;
+   // Sky nibble = static exposure; u_skyFactor = per-frame time of day
+   float sky = skyExposure * u_skyFactor;
+   float sunLight = sky * u_diffuse.r * NdotL + mix(u_minLight, u_ambient.r, sky);
    
    // Torch overrides directional: torch=1 -> full omni, torch=0 -> sun only
    float finalLight = mix(sunLight, 1.0f, torch);
@@ -206,6 +237,11 @@ void main()
         else
             color *= 1.2f;
     }
+
+    // Horizontal distance only, no fog at increasing height
+    vec3 toFrag = fWorldPos - u_cameraPos;
+    float fog = smoothstep(u_fogStart, u_fogEnd, length(toFrag.xz));
+    color = mix(color, SkyColor(normalize(toFrag)), fog);       // Blend terrain color & sky color to obtain fogged pixel (fog present depending on dist)
 
     //FragColor = vec4(color, baseTex.a);
     float finalAlpha = fAlpha * baseTex.a;

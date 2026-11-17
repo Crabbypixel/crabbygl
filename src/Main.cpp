@@ -25,6 +25,8 @@
 #include "rendering/VertexBuffer.h"
 #include "rendering/BufferLayout.h"
 #include "rendering/UIRenderer.h"
+#include "rendering/Sun.h"
+#include "world/DayNightCycle.h"
 
 #include "imgui/imgui_includes.h"
 #include "imgui/imgui_internal.h"
@@ -57,13 +59,19 @@ private:
 	Shader framebufferShader;
 	Shader crosshairShader;
 	Shader chunkMeshShader;
-	Shader waterMeshShader;
+	Shader skyShader;
 
 	// Player
 	Player player;
 
 	// World
 	World world;
+
+	// Sky
+	Sun sun;
+	Sun moon;
+	DayNightCycle dayCycle;
+	float minLight = 0.3f;
 
 	// Chunk outlines for debugging
 	ChunkDebug chunkDebug;
@@ -81,6 +89,7 @@ private:
 	const float DOUBLE_TAP_WINDOW = 0.3f;
 	float spaceTimer = 0.0f;
 	bool waitingForSecondTap = false;
+	
 	bool isAOEnabled = true;
 	bool shouldDrawAsWireframe = false;
 
@@ -125,23 +134,32 @@ public:
 		if (!inventory.Load("saves/player_inventory.bin"))
 			std::cout << "Error loading player inventory\n";
 
-		// ───── World ──────────────────────────────────────────────────
+		// ----- World ------------------------------------------------
 		chunkMeshShader.load("assets/shaders/ChunkMesh.glsl");
-		waterMeshShader.load("assets/shaders/WaterMesh.glsl");
 
-		world.SetChunkShader(chunkMeshShader, waterMeshShader);
+		world.SetChunkShader(chunkMeshShader);
 		world.LoadAtlasTexture("assets/textures/textures.png");
+
+		// ----- Sky, Sun & Moon ------------------------------------------------
+		sun.Init("assets/shaders/Sun.glsl");
+		moon.Init("assets/shaders/Sun.glsl");
+		skyShader.load("assets/shaders/Sky.glsl");
+
+		moon.size = 20.0f;
+		moon.coreColor = glm::vec3(0.85f, 0.88f, 0.95f);	// Pale blue-white
+		moon.color = glm::vec3(0.6f, 0.65f, 0.8f);			// Cool halo
+		moon.haloStrength = 0.08f;
 
 		// Spawn 4 threads for loading chunks and 4 threads for generating meshes
 		// This is the optimal spot for good performance without overly increasing number of threads
 		world.StartChunkLoadWorkers(4);
 		world.StartMeshWorkers(4);
 
-		// ───── Shaders ──────────────────────────────────────────────────
+		// ----- Shaders ------------------------------------------------
 		InitShaders();
 
 		{
-			// ───── Framebuffers ──────────────────────────────────────────────────
+			// ----- Framebuffers ------------------------------------------------
 			// Generate and bind the framebuffer
 			framebufferShader.load("assets/shaders/Framebuffer.glsl");
 
@@ -172,14 +190,13 @@ public:
 			// Bind back to the default framebuffer
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			// ──────────────────────────────────────────────────────────────
+			// ------------------------------------------------------
 
-			// ───── UBOs ──────────────────────────────────────────────────
+			// ----- UBOs ------------------------------------------------
 			// UBOs to unnecessarily avoid settings uniforms in shaders repeatedly
 			// Bind "Matrices" uniform to binding index 0 in every shader
 			glUniformBlockBinding(axesShader.getID(), glGetUniformBlockIndex(axesShader.getID(), "Matrices"), 0);
 			glUniformBlockBinding(chunkMeshShader.getID(), glGetUniformBlockIndex(chunkMeshShader.getID(), "Matrices"), 0);
-			glUniformBlockBinding(waterMeshShader.getID(), glGetUniformBlockIndex(waterMeshShader.getID(), "Matrices"), 0);
 
 			ErrorLog();
 
@@ -190,7 +207,7 @@ public:
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboMatrices);
-			// ──────────────────────────────────────────────────────────────
+			// ------------------------------------------------------
 		}
 
 		// Initialize ImGui
@@ -217,8 +234,17 @@ public:
 		// Bind to the custom framebuffer
 		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-		// Clear colorbuffer, depthbuffer and stencilbuffer
-		glClearColor(0.227f, 0.757f, 1.0f, 1.0f);
+		// Clear colorbuffer
+		if (!bIsPaused)
+			dayCycle.Update(dt);
+
+		const glm::vec3 horizon = dayCycle.HorizonColor();
+		glClearColor(horizon.r, horizon.g, horizon.b, 1.0f);
+
+		// Default skycolor used before introducing day-night cycle
+		//glClearColor(0.227f, 0.757f, 1.0f, 1.0f);
+
+		// Clear depthbuffer and stencilbuffer
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 		// Use the depth buffer
@@ -228,7 +254,7 @@ public:
 		// Get user controls
 		UserControls(dt);
 
-		// ───── Physics ───────────────────────────────────────────────
+		// ----- Physics ------------------------------------------------
 		if (!bIsPaused)
 		{
 			bool shouldUpdatePlayerMovement = !inventory.IsOpen();
@@ -251,9 +277,16 @@ public:
 			camera.position = player.EyePos();
 
 			// Physics test - generate a gravel platform to test physics (in development - prone to bugs)
-			if (GetKey('U').bPressed)
+			glm::ivec2 startPos = { 0, 0 };
+			int height = 60;
+			int c = 2;
+			if (GetKey(GLFW_KEY_LEFT_CONTROL).bHeld && GetKey('U').bPressed)
 			{
-				world.SetBlock(0, 60, 0, BlockType::WATER_FLOWING);
+				for(int x = 0; x < c; ++x)
+				{
+					for(int z = 0; z < c; ++z)
+						world.SetBlock(startPos.x + x, height, startPos.y + z, BlockType::GRAVEL);
+				}
 			}
 		}
 
@@ -277,7 +310,7 @@ public:
 
 			if (isBlockBreakValid)
 			{	
-				world.GetWorldPhysics().NotifyBlockRemoved(raycastHitPos.x, raycastHitPos.y, raycastHitPos.z);
+				world.GetWorldPhysics().NotifyBlockChanged(raycastHitPos.x, raycastHitPos.y, raycastHitPos.z);
 				world.GetLightingSystem().NotifyBlockRemoved(raycastHitPos.x, raycastHitPos.y, raycastHitPos.z);
 			}
 		}
@@ -289,18 +322,18 @@ public:
 
 			if (isBlockPlaceValid)
 			{
-				world.GetWorldPhysics().NotifyBlockRemoved(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
-				if (inventory.GetHeldBlock() == BlockType::WATER)
-					world.GetWorldPhysics().NotifyWaterSourcePlaced(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
+				world.GetWorldPhysics().NotifyBlockChanged(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
 				world.GetLightingSystem().NotifyBlockPlaced(raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z, inventory.GetHeldBlock());
 			}
 		}
 
 		// Update world physics & world lighting
-		world.GetWorldPhysics().Update(dt);
+		if(!bIsPaused)
+			world.GetWorldPhysics().Update(dt);
+
 		world.GetLightingSystem().Update();
 
-		// ───── Rendering ───────────────────────────────────────────────
+		// ----- Rendering ------------------------------------------------
 		// Update chunk streaming state based on player position:
 		// - Enqueue new chunks for generation within view distance
 		// - Identify chunks outside unload distance for removal
@@ -334,6 +367,51 @@ public:
 		// Toggle AO
 		chunkMeshShader.setBool("u_isAOEnabled", isAOEnabled);
 
+		// Day/night: per-frame uniforms only, world/lighting state untouched
+		const glm::vec3 lightDir = dayCycle.LightDir();
+		//chunkMeshShader.setVec3("u_lightDir", lightDir);
+		chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
+		chunkMeshShader.setFloat("u_skyFactor", dayCycle.SkyFactor());
+		chunkMeshShader.setFloat("u_minLight", minLight);
+		
+		// Fog
+		const float fogEnd = glm::max(static_cast<float>(world.GetViewDist() * CX - 24), 8.0f);
+		chunkMeshShader.setVec3("u_cameraPos", camera.position);
+		chunkMeshShader.setFloat("u_fogEnd", fogEnd);
+		chunkMeshShader.setFloat("u_fogStart", fogEnd * 0.7f);
+		chunkMeshShader.setVec3("u_zenithColor", dayCycle.ZenithColor());
+		chunkMeshShader.setVec3("u_horizonColor", dayCycle.HorizonColor());
+		chunkMeshShader.setVec3("u_sunDir", dayCycle.SunDir());
+		chunkMeshShader.setVec4("u_sunsetColor", dayCycle.SunsetColor());
+
+		// Sky gradient + sunset fan
+		{
+			// This converts camera space coords containing rotation but no translation
+			const glm::mat4 skyView = glm::mat4(glm::mat3(camera.getLookAt()));
+
+			glDisable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+
+			skyShader.use();
+			skyShader.setMat4("uInvViewProj", glm::inverse(matProjection * skyView));
+			skyShader.setVec3("uZenithColor", dayCycle.ZenithColor());
+			skyShader.setVec3("uHorizonColor", dayCycle.HorizonColor());
+			skyShader.setVec3("uSunDir", dayCycle.SunDir());
+			skyShader.setVec4("uSunsetColor", dayCycle.SunsetColor());
+			skyShader.setFloat("uSkyAngle", dayCycle.CelestialAngle());
+			skyShader.setFloat("uStarStrength", dayCycle.StarStrength());
+
+			quadVAO.bind();
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glDepthMask(GL_TRUE);
+			glEnable(GL_DEPTH_TEST);
+		}
+
+		// Draw sun & moon
+		sun.Draw(camera.position, -dayCycle.SunDir());
+		moon.Draw(camera.position, dayCycle.SunDir());		// Draw opposite of sun
+
 		// Draw world
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
 		world.DrawAll(matProjection, camera.getLookAt());
@@ -345,7 +423,7 @@ public:
 		// Coordinate axis
 		RenderAxis();
 
-		// ── UI pass ────────────────────────────────────────
+		// ----- UI pass ------------------------------------------------
 		// Disable writing & using the depth buffer
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
@@ -424,7 +502,7 @@ public:
 
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
-		// ───── ImGui ───────────────────────────────────────────────
+		// ----- ImGui ------------------------------------------------
 
 		glm::ivec2 playerChunk = World::ChunkCoord(player.GetPos().x, player.GetPos().z);
 		glm::ivec3 playerLocalChunk = World::ChunkLocalCoord(player.GetPos().x, player.GetPos().y, player.GetPos().z);
@@ -441,6 +519,7 @@ public:
 		ImGui::Text("Raycast place position: %d %d %d", raycastPlacePos.x, raycastPlacePos.y, raycastPlacePos.z);
 		ImGui::Text("Chunk borders (G to toggle): %s", chunkDebug.visible ? "Enabled" : "Disabled");
 		ImGui::Text("AO: %s", isAOEnabled ? "Enabled" : "Disabled");
+		ImGui::Text("Solar angle: %d degrees", static_cast<int>(std::round(dayCycle.CelestialAngle() * 180 / PI)));
 
 		static int teleportX = 0;
 		static int teleportY = 0;
@@ -452,6 +531,10 @@ public:
 
 		if (ImGui::Button("Teleport"))
 			player.SetPos(glm::vec3(teleportX, teleportY, teleportZ));
+
+		ImGui::SliderFloat("Time of day", &dayCycle.time, 0.0f, 0.999f);
+		ImGui::Checkbox("Pause time", &dayCycle.paused);
+		ImGui::SliderFloat("Min light", &minLight, 0.05f, 1.0f);
 
 		ImGui::End();
 		ImGui::Render();
@@ -552,14 +635,18 @@ public:
 		if (GetKey('H').bPressed)
 			isAOEnabled = !isAOEnabled;
 
+		// Toggle daycycle update
+		if (GetKey('L').bPressed)
+			dayCycle.paused = !dayCycle.paused;
+
 		RequestCursor(bIsPaused || inventory.IsOpen());
 	}
 
 	void InitShaders()
 	{
 		chunkMeshShader.use();
-		chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
-		chunkMeshShader.setVec3("u_ambient", glm::vec3(0.25f));
+		// "u_lightDir" is now done by the day-night cycle
+		chunkMeshShader.setVec3("u_ambient", glm::vec3(0.3f));
 		chunkMeshShader.setVec3("u_diffuse", glm::vec3(0.7f));
 	}
 
@@ -662,3 +749,10 @@ int main()
 
 	return 0;
 }
+
+/*
+* To be added in Github:
+* https://www.reddit.com/r/gamedev/comments/2iru8i/fast_flood_fill_lighting_in_a_blocky_voxel_game/
+* https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
+* https://learnopengl.com/
+*/

@@ -50,7 +50,7 @@ RaycastHit RaycastDDA(const glm::vec3& origin, const glm::vec3& direction, const
 		const BlockType& blockType = world.GetBlock(currentBlock.x, currentBlock.y, currentBlock.z);
 		const BlockDef& def = GetDef(blockType);
 
-		if (def.flags & (BLOCK_SOLID | BLOCK_CROSS | BLOCK_TRANSLUCENT))
+		if ((def.flags & (BLOCK_SOLID | BLOCK_CROSS | BLOCK_TRANSLUCENT)) && !(def.flags & BLOCK_WATER))
 		{
 			result.hit = true;
 			result.blockPos = currentBlock;

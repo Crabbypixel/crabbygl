@@ -21,7 +21,8 @@ float crosshairVertices[] = {
 	 0.0f,  0.01f
 };
 
-float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+// Vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates
+float quadVertices[] = {
 	// positions   // texCoords
 	-1.0f,  1.0f,  0.0f, 1.0f,
 	-1.0f, -1.0f,  0.0f, 0.0f,

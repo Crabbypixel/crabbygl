@@ -34,6 +34,15 @@ static constexpr int DecodeZ(uint16_t index) noexcept
 	return (index) & 0xF;
 }
 
+void LightingSystem::MarkVisited(Chunk* c)
+{
+	if (c != m_lastVisited)
+	{
+		m_lastVisited = c;
+		m_visitedChunks.insert(c);
+	}
+}
+
 void LightingSystem::InitChunkLight(Chunk* chunk)
 {
 	if (!chunk)
@@ -41,39 +50,9 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 
 	const glm::ivec2 pos = chunk->chunkPos;
 
-	// BFS
-	{
-		std::unique_lock lock(chunk->chunkMutex);
-
-		for (int x = 0; x < CX; ++x)
-		for (int z = 0; z < CZ; ++z)
-		{
-			SetSunlightUnsafe(chunk, x, CY - 1, z, 15);
-			m_sunlightBFSQueue.emplace(Encode(x, CY - 1, z), chunk);
-		}
-	}
-
-	chunk->dirty = true;			// Dirty it here
-
-	// Torchlight
-	{
-		std::unique_lock lock(chunk->chunkMutex);
-
-		for(int y = 0; y < CY; ++y)
-		for(int x = 0; x < CX; ++x)
-		for(int z = 0; z < CZ; ++z)
-		{
-			int lightValue = GetDef(chunk->GetUnchecked(x, y, z)).lightEmission;
-
-			if (lightValue > 0)
-			{
-				SetTorchLightUnsafe(chunk, x, y, z, lightValue);
-				m_visitedChunks.insert(chunk);
-				m_torchlightBFSQueue.emplace(Encode(x, y, z), chunk);
-			}
-		}
-	}
-
+	// Local light already build on the worker (BuildLocalLight), only borders remain!
+	std::unique_lock lock(chunk->chunkMutex);
+	
 	// Check if the chunk's neighbors edge blocks have light -> seed BFS
 	// Neighbor bleed-in (for both sunlight and torchlight)
 	static const struct {
@@ -82,59 +61,157 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 		glm::ivec2 edgePos;     // Boundary coordinate inside the current chunk
 	} SIDES[] = {
 		// -1 means that index is run by a loop variable
-		{ {  1,  0 }, { 0,      -1 }, { CX - 1, -1     } },        // +X neighbor
-		{ { -1,  0 }, { CX - 1, -1 }, { 0,      -1     } },        // -X neighbor
-		{ {  0,  1 }, { -1,     0  }, { -1,     CZ - 1 } },        // +Z neighbor
-		{ {  0, -1 }, { -1, CZ - 1 }, { -1,     0      } }         // -Z neighbor
+		{ { 1,  0 },{ 0,      -1 },{ CX - 1, -1 } },        // +X neighbor
+		{ { -1, 0 },{ CX - 1, -1 },{ 0,      -1 } },        // -X neighbor
+		{ { 0,  1 },{ -1,      0 },{ -1, CZ - 1 } },        // +Z neighbor
+		{ { 0, -1 },{ -1, CZ - 1 },{ -1,      0 } }         // -Z neighbor
 	};
 
 	for (const auto& side : SIDES)
 	{
-		std::unique_lock lock(chunk->chunkMutex);
-
 		const glm::ivec2 nPos = pos + side.ND;
+		
 		Chunk* neighborChunk = m_world->GetChunk(nPos.x * CX, nPos.y * CZ);
-
 		if (!neighborChunk)
 			continue;
 
-		// Traverse layer by layer (increasing height)
-		// The inner (i) loop is only for +/- X/Z so it always runs 16 times
-		for(int y = 0; y < CY; ++y)
-		for(int i = 0; i < CX; ++i)
+		for (int y = 0; y < CY; ++y)
+		for (int i = 0; i < CX; ++i)		// X or Z
 		{
-			// Border pos - coord inside neighboring chunk
-			glm::ivec3 borderPos = (side.borderPos.x != -1) ? glm::ivec3(side.borderPos.x, y, i) : glm::ivec3(i, y, side.borderPos.y);
-			glm::ivec3 edgePos = (side.edgePos.x != -1) ? glm::ivec3(side.edgePos.x, y, i) : glm::ivec3(i, y, side.edgePos.y);
-
-			int borderTorchlight = GetTorchLight(neighborChunk, borderPos.x, borderPos.y, borderPos.z);
-			if (borderTorchlight > 1)
+			// Border pos = coord inside neighboring chunk
+			const glm::ivec3 borderPos = (side.borderPos.x != -1) ? glm::ivec3(side.borderPos.x, y, i) : glm::ivec3(i, y, side.borderPos.y);
+			const glm::ivec3 edgePos = (side.edgePos.x != -1) ? glm::ivec3(side.edgePos.x, y, i) : glm::ivec3(i, y, side.edgePos.y);
+			
+			const int nTorch = GetTorchLight(neighborChunk, borderPos.x, borderPos.y, borderPos.z);
+			const int eTorch = GetTorchLight(chunk,			edgePos.x,	 edgePos.y,   edgePos.z);
+			const int nSun	 = GetSunlight(neighborChunk,	borderPos.x, borderPos.y, borderPos.z);
+			const int eSun	 = GetSunlight(chunk,			edgePos.x,   edgePos.y,   edgePos.z);
+			
+			// In: neighbor -> this chunk
+			if (nTorch > 1 && eTorch < nTorch - 1)
 			{
-				int incomingTorchlight = borderTorchlight - 1;
-				int edgeTorchlight = GetTorchLight(chunk, edgePos.x, edgePos.y, edgePos.z);
-
-				// Bleed-in torchlight from chunk boundaries
-				if (edgeTorchlight < incomingTorchlight)
-				{
-					SetTorchLightUnsafe(chunk, edgePos.x, edgePos.y, edgePos.z, incomingTorchlight);
-					m_visitedChunks.insert(chunk);
-					m_torchlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
-				}
+				SetTorchLightUnsafe(chunk, edgePos.x, edgePos.y, edgePos.z, nTorch - 1);
+				MarkVisited(chunk);
+				m_torchlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}
 
-			int borderSunlight = GetSunlight(neighborChunk, borderPos.x, borderPos.y, borderPos.z);
-			if (borderSunlight > 1)
+			// Out: neighbor -> this chunk, worker BFS stopped at the border; re-queue edge
+			// cell only if it would actually spread the light
+			else if (eTorch > 1 && nTorch + 2 <= eTorch)
 			{
-				int incomingSunlight = borderSunlight - 1;
-				int edgeSunlight = GetSunlight(chunk, edgePos.x, edgePos.y, edgePos.z);
+				m_torchlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
+			}
 
-				// Bleed-in sunlight from chunk boundaries
-				if (edgeSunlight < incomingSunlight)
-				{
-					SetSunlightUnsafe(chunk, edgePos.x, edgePos.y, edgePos.z, incomingSunlight);
-					m_visitedChunks.insert(chunk);
-					m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
-				}
+			if (nSun > 1 && eSun < nSun - 1)
+			{
+				SetSunlightUnsafe(chunk, edgePos.x, edgePos.y, edgePos.z, nSun - 1);
+				MarkVisited(chunk);
+				m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
+			}
+
+			else if (eSun > 1 && nSun + 2 <= eSun)
+			{
+				m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
+			}
+		}
+	}
+
+	chunk->dirty = true;
+}
+
+/*
+* Runs on a load worker before staging: chunk is thread-owned, so no locks.
+* Mirrors PropagateSunlight & PropagateTorchlight exactly, but clipped to this chunk.
+* Borders are resolved later on the main thread by InitChunkLight().
+* This is the hottest loop in chunk load.
+*/
+void LightingSystem::BuildLocalLight(Chunk& chunk)
+{
+	thread_local std::vector<uint16_t> q;		// Per-worker, no alloc after warm-up
+	auto& L = chunk.lightMap;					// Zeroed by chunk ctor
+
+	// ----- Sunlight, pass 1: straight-down columns (at build height limit) -----
+	int height[CX][CZ];					// y of the first opaque block from the top, -1 = open column
+	for(int x = 0; x < CX; ++x)
+	for(int z = 0; z < CZ; ++z)
+	{
+		L[x][CY - 1][z] |= 0xF0;		// Place 15 lightlevel at the build height limit
+		int y = CY - 2;
+		for (; y >= 0 && !IsOpaque(chunk.GetUnchecked(x, y, z)); --y)
+			L[x][y][z] |= 0xF0;
+		height[x][z] = y;
+	}
+
+	// ----- Sunlight, pass 2: seed only sky cells that have a darker in-chunk side neighbor -----
+	// * A sky cell at y can only light sideways if some neighbor column's roof is at/above y
+	q.clear();
+	for (int x = 0; x < CX; ++x)
+	for (int z = 0; z < CZ; ++z)
+	{
+		int roof = -1;
+		if (x > 0)		roof = std::max(roof, height[x - 1][z]);
+		if (x < CX - 1)	roof = std::max(roof, height[x + 1][z]);
+		if (z > 0)		roof = std::max(roof, height[x][z - 1]);
+		if (z < CZ - 1) roof = std::max(roof, height[x][z + 1]);
+		
+		for (int y = height[x][z] + 1; y <= roof; y++)
+			q.push_back(Encode(x, y, z));
+	}
+
+	for (size_t head = 0; head < q.size(); ++head)
+	{
+		const uint16_t idx = q[head];
+		const int x = DecodeX(idx), y = DecodeY(idx), z = DecodeZ(idx);
+		const int level = L[x][y][z] >> 4;		// Sunlight level
+		
+		for (const auto& nd : BLOCK_NEIGHBORS)
+		{
+			const int nx = x + nd.x, ny = y + nd.y, nz = z + nd.z;
+
+			if (!Chunk::InBounds(nx, ny, nz) || IsOpaque(chunk.GetUnchecked(nx, ny, nz)))
+				continue;
+
+			const bool down15 = (nd.y == -1 && level == 15);
+			const int nLevel = L[nx][ny][nz] >> 4;
+			
+			if (down15 ? nLevel < 15 : nLevel + 2 <= level)
+			{
+				L[nx][ny][nz] = (L[nx][ny][nz] & 0x0F) | ((down15 ? 15 : level - 1) << 4);
+				q.push_back(Encode(nx, ny, nz));
+			}
+		}
+	}
+
+	// ----- Torchlight -----
+	q.clear();
+	for (int y = 0; y < CY; ++y)
+	for (int x = 0; x < CX; ++x)
+	for (int z = 0; z < CZ; ++z)
+	{
+		const int lightEmission = GetDef(chunk.GetUnchecked(x, y, z)).lightEmission;
+		if (lightEmission > 0)
+		{
+			L[x][y][z] = (L[x][y][z] & 0xF0) | lightEmission;
+			q.push_back(Encode(x, y, z));
+		}
+	}
+
+	for (size_t head = 0; head < q.size(); ++head)
+	{
+		const uint16_t idx = q[head];
+		const int x = DecodeX(idx), y = DecodeY(idx), z = DecodeZ(idx);
+		const int level = L[x][y][z] & 0x0F;	// Torchlight level
+
+		for (const auto& nd : BLOCK_NEIGHBORS)
+		{
+			const int nx = x + nd.x, ny = y + nd.y, nz = z + nd.z;
+			if (!Chunk::InBounds(nx, ny, nz) || IsOpaque(chunk.GetUnchecked(nx, ny, nz)))
+				continue;
+
+			if ((L[nx][ny][nz] & 0x0F) + 2 <= level)
+			{
+				L[nx][ny][nz] = (L[nx][ny][nz] & 0xF0) | (level - 1);
+				q.push_back(Encode(nx, ny, nz));
 			}
 		}
 	}
@@ -224,7 +301,7 @@ void LightingSystem::PropagateTorch()
 		if (!chunk)
 		{
 			std::cerr << "PropagateTorch() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
@@ -303,7 +380,7 @@ void LightingSystem::RemoveTorch()
 		if (!chunk)
 		{
 			std::cerr << "RemoveTorch() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
@@ -375,7 +452,7 @@ void LightingSystem::PropagateSunlight()
 		if (!chunk)
 		{
 			std::cerr << "PropagateSunlight() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };
@@ -457,7 +534,7 @@ void LightingSystem::RemoveSunlight()
 		if (!chunk)
 		{
 			std::cerr << "RemoveSunlight() - invalid chunk\n";
-			return;
+			continue;
 		}
 
 		glm::ivec3 local = { DecodeX(index), DecodeY(index), DecodeZ(index) };

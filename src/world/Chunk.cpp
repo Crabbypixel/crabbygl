@@ -31,7 +31,13 @@ BlockType Chunk::GetUnchecked(int x, int y, int z) const
 
 void Chunk::SetUnchecked(int x, int y, int z, BlockType type)
 {
-	blocks[GetIndex(x, y, z)] = type;
+	int index = GetIndex(x, y, z);
+
+	// Avoid unnecessary writes and dirtying the chunk if the block type is unchanged
+	if(blocks[index] == type)
+		return;
+	
+	blocks[index] = type;
 
 	dirty = true;
 	modified = true;

@@ -8,7 +8,7 @@ const BlockDef BLOCK_DEFS[] =
 {
 	/* 0*/	{ "Air", { 0, 0, 0, 0, 0, 0 }, -1, { 1, 1, 1, 1 }, BLOCK_TRANSPARENT, 0.0f, false, 0 },
 	/* 1*/	{ "Dirt", { DIRT, DIRT, DIRT, DIRT, DIRT, DIRT }, -1, { 1, 1, 1, 1 }, BLOCK_OPAQUE | BLOCK_SOLID, 1.5f, false },
-	/* 2*/	{ "Grass block", { GRASS_TOP, DIRT, DIRT, DIRT, DIRT, DIRT }, GRASS_OVERLAY, { 0.55f, 0.78f, 0.28f, 1.0f }, BLOCK_OPAQUE | BLOCK_SOLID, 0.6f, true, 0 },
+	/* 2*/	{ "Grass block", { GRASS_TOP, DIRT, DIRT, DIRT, DIRT, DIRT }, GRASS_OVERLAY, { 0.55f, 0.90f, 0.28f, 1.0f }, BLOCK_OPAQUE | BLOCK_SOLID, 0.6f, true, 0 },
 	/* 3*/	{ "Stone", { STONE, STONE, STONE, STONE, STONE, STONE }, -1, { 1, 1, 1, 1 }, BLOCK_OPAQUE | BLOCK_SOLID, 1.5f, false, 0 },
 	/* 4*/	{ "Bedrock", { BEDROCK, BEDROCK, BEDROCK, BEDROCK, BEDROCK, BEDROCK }, -1, { 1, 1, 1, 1 }, BLOCK_OPAQUE | BLOCK_SOLID, 10000.0f, false, 0 },
 	/* 5*/	{ "Brick", { BRICK, BRICK, BRICK, BRICK, BRICK, BRICK }, -1, { 1, 1, 1, 1 }, BLOCK_OPAQUE | BLOCK_SOLID, 1.5f, false, 0 },
@@ -36,7 +36,14 @@ const BlockDef BLOCK_DEFS[] =
 	/*25*/  { "Log", { TREE_LOG_SIDES_1, TREE_LOG_SIDES_1, TREE_LOG_SIDES_2, TREE_LOG_SIDES_2, TREE_LOG_TOP, TREE_LOG_TOP }, -1, { 1,1,1,1 }, BLOCK_OPAQUE | BLOCK_SOLID, 1.5f, false, 0 },
 	/*26*/	{ "Glowstone", { GLOWSTONE, GLOWSTONE, GLOWSTONE, GLOWSTONE, GLOWSTONE, GLOWSTONE }, -1, { 1, 1, 1, 1}, BLOCK_OPAQUE | BLOCK_SOLID, 1.5f, false, 15},
 	/*27*/  { "Water", { WATER, WATER, WATER, WATER, WATER, WATER }, -1, { 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0},
-	/*28*/  { "Flowing water", { WATER, WATER, WATER, WATER, WATER, WATER }, -1, { 1, 1, 1, 0.4f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 }
+	/*28*/  { "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*29*/	{ "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*30*/	{ "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*31*/	{ "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*32*/	{ "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*33*/	{ "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*34*/	{ "Flowing water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 },
+	/*35*/	{ "Falling water",{ WATER, WATER, WATER, WATER, WATER, WATER }, -1,{ 1, 1, 1, 1.0f }, BLOCK_WATER | BLOCK_TRANSLUCENT, 0.0f, false, 0 }
 };
 
 static_assert(std::size(BLOCK_DEFS) == (size_t)BlockType::MAX_VALUE, "BlockType enum and BLOCK_DEFS[] out of sync");
