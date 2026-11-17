@@ -4,6 +4,8 @@
 #include "world/BlockRegistry.h"
 
 #include <iostream>
+#include <climits>
+#include <algorithm>
 
 namespace
 {
@@ -12,7 +14,7 @@ namespace
 	constexpr glm::ivec3 HORIZONTAL[4] = { { 1,0,0 },{ -1,0,0 },{ 0,0,1 },{ 0,0,-1 } };
 
 	// Water can move into these
-	bool IsReplaceable(BlockType t) noexcept { return t == BlockType::AIR; }
+	bool IsReplaceable(BlockType t) noexcept { return t == BlockType::AIR || IsCross(t); }
 
 	// A floor water can rest and spread, if water below is NOT a floor: flowing water
 	// sitting on water must not skate across the surface
@@ -107,7 +109,7 @@ void WorldPhysics::Tick()
 		BlockType belowType = Read(belowPos);
 
 		// If the block below is air, fall down else continue
-		if (belowType != BlockType::AIR)
+		if (belowType != BlockType::AIR && !IsWater(belowType))
 			continue;
 
 		// The below block is air, so move the gravity block down by one and mark the new position dirty for the next tick
@@ -119,6 +121,10 @@ void WorldPhysics::Tick()
 		// and mark the block below the new position dirty for future gravity updates
 		m_nextDirtyBlocks.insert(pos + UP);
 		m_nextDirtyBlocks.insert(belowPos);
+
+		// Vacated cells can be flooded now, displaced water lost a cell
+		DirtyWaterAround(pos);
+		DirtyWaterAround(belowPos);
 	}
 
 	std::swap(m_dirtyBlocks, m_nextDirtyBlocks);
@@ -152,7 +158,58 @@ BlockType WorldPhysics::Read(const glm::ivec3& p) const
 
 void WorldPhysics::OnChunkLoaded(const Chunk& chunk)
 {
-	(void)chunk;
+	// Renderer thread is the only writer, so unlocked reads of this chunk and its neighbours are race-free here
+	const int baseX = chunk.chunkPos.x * CX;
+	const int baseZ = chunk.chunkPos.y * CZ;
+
+	// Interior-only check; border cells are woken unconditionally below
+	auto isOpenAround = [&](int x, int y, int z)
+	{
+		if (y > 0	   && IsReplaceable(chunk.GetUnchecked(x, y - 1, z))) return true;
+		if (x > 0	   && IsReplaceable(chunk.GetUnchecked(x - 1, y, z))) return true;
+		if (x < CX - 1 && IsReplaceable(chunk.GetUnchecked(x + 1, y, z))) return true;
+		if (z > 0	   && IsReplaceable(chunk.GetUnchecked(x, y, z - 1))) return true;
+		if (z < CZ - 1 && IsReplaceable(chunk.GetUnchecked(x, y, z + 1))) return true;
+		return false;
+	};
+
+	for (int y = 0; y < CY; ++y)
+	for (int x = 0; x < CX; ++x)
+	for (int z = 0; z < CZ; ++z)
+	{
+		const BlockType t = chunk.GetUnchecked(x, y, z);
+		if (!IsWater(t))
+			continue;
+
+		const bool onBorder = (x == 0 || x == CX - 1 || z == 0 || z == CZ - 1);
+
+		// Flowing water from disk keeps its level (it's in the id) but must re-verify its feed;
+		// stable cells cost one evaluation and drop out. Deep ocean sources are never touched
+		if (!IsSource(t) || onBorder || isOpenAround(x, y, z))
+			m_nextWaterDirty.insert({ baseX + x, y, baseZ + z });
+	}
+
+	// Water in already-loaded neighbours that touches this chunk saw a wall (Read) until now
+	auto wakeColumn = [&](const glm::ivec2& nCoord, int lx0, int lx1, int lz0, int lz1)
+	{
+		const Chunk* n = m_world->GetChunk(nCoord.x * CX, nCoord.y * CZ);
+		if (!n)
+			return;
+
+		for (int y = 0; y < CY; ++y)
+		for (int x = lx0; x <= lx1; ++x)
+		for (int z = lz0; z <= lz1; ++z)
+		{
+			if (IsWater(n->GetUnchecked(x, y, z)))
+				m_nextWaterDirty.insert({ nCoord.x * CX + x, y, nCoord.y * CZ + z });
+		}
+	};
+
+	const glm::ivec2 c = chunk.chunkPos;
+	wakeColumn(c + glm::ivec2(-1, 0), CX - 1, CX - 1,      0, CZ - 1);	// -X neighbour: its x = 15 face
+	wakeColumn(c + glm::ivec2(1,  0),      0,      0,      0, CZ - 1);	// +X neighbour: its x = 0 face
+	wakeColumn(c + glm::ivec2(0, -1),      0, CX - 1, CZ - 1, CZ - 1);	// -Z neighbour: its z = 15 face
+	wakeColumn(c + glm::ivec2(0,  1),      0, CX - 1,      0,	   0);		// +Z neighbour: its z = 0 face
 }
 
 void WorldPhysics::DirtyWaterAround(const glm::ivec3& p)
@@ -184,6 +241,109 @@ bool WorldPhysics::SpreadSideways(const glm::ivec3& p, BlockType type) const
 	return IsSource(type) || BlocksFlow(below);
 }
 
+void WorldPhysics::FindFlowDirections(const glm::ivec3& p, bool outDirs[4]) const
+{
+	// Flow only toward the nearest drop within DROP_SEARCH_RADIUS:
+	// if no drop is in reach, flow in every open direction
+	// One BFS over a small fixed grid, each cell tagged with which first step(s) reach it
+
+	constexpr int R = DROP_SEARCH_RADIUS;
+	constexpr int W = 2 * R + 1;		// Grid centered on p: grid(R,R) == world p
+
+	uint8_t mask[W][W] = {};		// bit i = reachable on a shortest path whose first step is horizontal[i]
+	int8_t depth[W][W];				// -1 unvisited, -2 wall, else steps from p
+
+	for (auto& row : depth)
+		for (auto& d : row)
+			d = -1;
+
+	auto passable = [&](BlockType t) { return IsReplaceable(t) || (IsWater(t) && !IsSource(t)); };
+	auto isDrop = [&](const glm::ivec3& c) { return !BlocksFlow(Read(c + DOWN)); };
+
+	glm::ivec2 frontier[W * W];
+	int frontierCount = 0;
+
+	// Depth 1: the four neighbours, each tagged with its own direction bit
+	for (int i = 0; i < 4; ++i)
+	{
+		outDirs[i] = false;
+		const glm::ivec3 n = p + HORIZONTAL[i];
+		if (!passable(Read(n)))
+			continue;
+
+		const int gx = R + HORIZONTAL[i].x, gz = R + HORIZONTAL[i].z;
+		depth[gx][gz] = 1;
+		mask[gx][gz] = static_cast<uint8_t>(1u << i);
+		frontier[frontierCount++] = { gx, gz };
+	}
+
+	if (frontierCount == 0)
+		return;		// Boxed in
+
+	depth[R][R] = 0;	// Never route back through the origin
+
+	uint8_t open = 0;
+	for (int k = 0; k < frontierCount; ++k)
+		open |= mask[frontier[k].x][frontier[k].y];
+
+	for (int d = 1; d <= R && frontierCount > 0; ++d)
+	{
+		// Any drop at this depth? The union of their first steps is the answer
+		uint8_t dropMask = 0;
+		for (int k = 0; k < frontierCount; ++k)
+		{
+			const glm::ivec2 g = frontier[k];
+			if (isDrop({ p.x + g.x - R, p.y, p.z + g.y - R }))
+				dropMask |= mask[g.x][g.y];
+		}
+
+		if (dropMask)
+		{
+			for (int i = 0; i < 4; ++i)
+				outDirs[i] = (dropMask >> i) & 1u;
+			return;
+		}
+
+		// Expand to depth d + 1
+		glm::ivec2 next[W * W];
+		int nextCount = 0;
+		for (int k = 0; k < frontierCount; ++k)
+		{
+			const glm::ivec2 g = frontier[k];
+			for (const auto& h : HORIZONTAL)
+			{
+				const int nx = g.x + h.x, nz = g.y + h.z;
+				if (nx < 0 || nx >= W || nz < 0 || nz >= W)
+					continue;
+
+				if (depth[nx][nz] == -1)
+				{
+					if (!passable(Read({ p.x + nx - R, p.y, p.z + nz - R })))
+					{
+						depth[nx][nz] = -2;		// Wall, don't re-read
+						continue;
+					}
+
+					depth[nx][nz] = static_cast<int8_t>(d + 1);
+					next[nextCount++] = { nx, nz };
+				}
+
+				// Equal-length paths from different first steps both count
+				if (depth[nx][nz] == d + 1)
+					mask[nx][nz] |= mask[g.x][g.y];
+			}
+		}
+
+		for (int k = 0; k < nextCount; ++k)
+			frontier[k] = next[k];
+		frontierCount = nextCount;
+	}
+
+	// No drop in reach: spread everywhere open
+	for (int i = 0; i < 4; ++i)
+		outDirs[i] = (open >> i) & 1u;
+}
+
 void WorldPhysics::ComputeOutflow(const glm::ivec3& p, BlockType state)
 {
 	const glm::ivec3 belowPos = p + DOWN;
@@ -204,10 +364,16 @@ void WorldPhysics::ComputeOutflow(const glm::ivec3& p, BlockType state)
 	if (nextFlow > MAX_FLOW_DIST)
 		return;
 
+	bool dirs[4];
+	FindFlowDirections(p, dirs);
+
 	const BlockType nextWaterFlow = MakeFlowing(nextFlow);
-	for (const auto& d : HORIZONTAL)
+	for (int i = 0; i < 4; i++)
 	{
-		const glm::ivec3 n = p + d;
+		if (!dirs[i])
+			continue;
+
+		const glm::ivec3 n = p + HORIZONTAL[i];
 		const BlockType t = Read(n);
 
 		// Upgrade weaker flowing water if a stronger one exists, a second source can raise this flow
@@ -231,7 +397,13 @@ void WorldPhysics::TickWater()
 		if (!IsWater(currentCell))		// Air cells get water through their neighbors' outflow
 			continue;
 
-		ComputeOutflow(pos, currentCell);
+		// Sources are fixed, everything else re-derives its state from its neighbors
+		const BlockType	state = IsSource(currentCell) ? currentCell : ComputeWaterState(pos);
+		if (state != currentCell)
+			ProposeWrite(pos, state);		// May be air, loses to any neighbor feeding this cell
+
+		if (state != BlockType::AIR)
+			ComputeOutflow(pos, state);		// Push from the NEW state, so a weakening cell pushes weaker water
 	}
 	m_waterDirty.clear();
 
@@ -246,6 +418,46 @@ void WorldPhysics::TickWater()
 
 		m_world->SetBlock(pos.x, pos.y, pos.z, type);
 		DirtyWaterAround(pos);
+		m_nextDirtyBlocks.insert(pos + UP);			// For sand/gravel resting on a cell that just turned air or water
 	}
 	m_waterWrites.clear();
+}
+
+BlockType WorldPhysics::ComputeWaterState(const glm::ivec3& p) const
+{
+	/* Works using pull model: A non-source cell is whatever the neighbors can sustain.
+	*  Removing a source therefore drains its flow one step at a time with no BFS, and
+	*  two sources feeding one cell never fight, it is already resolved previously.
+	* */
+
+	if (IsWater(Read(p + UP)))
+		return BlockType::WATER_FALLING;
+
+	int best = INT_MAX;
+	int adjacentSources = 0;
+	for (const auto& d : HORIZONTAL)
+	{
+		const glm::ivec3 n = p + d;
+		const BlockType t = Read(n);
+
+		if (IsSource(t))
+			++adjacentSources;
+
+		// Only neighbors that actually spread sideways can feel this cell: a neighbor that is
+		// falling through air or flowing on top of water doesn't push water out to its sides
+		if (IsWater(t) && SpreadSideways(n, t))
+			best = std::min(best, FlowDistance(t));
+	}
+
+	if (INFINITE_SOURCES && adjacentSources >= 2)
+	{
+		const BlockType below = Read(p + DOWN);
+		if (BlocksFlow(below) || IsSource(below))
+			return BlockType::WATER;
+	}
+
+	if (best == INT_MAX || best + 1 > MAX_FLOW_DIST)
+		return BlockType::AIR;
+
+	return MakeFlowing(best + 1);
 }
