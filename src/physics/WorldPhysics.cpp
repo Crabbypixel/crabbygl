@@ -14,7 +14,7 @@ namespace
 	constexpr glm::ivec3 HORIZONTAL[4] = { { 1,0,0 },{ -1,0,0 },{ 0,0,1 },{ 0,0,-1 } };
 
 	// Water can move into these
-	bool IsReplaceable(BlockType t) noexcept { return t == BlockType::AIR; }
+	bool IsReplaceable(BlockType t) noexcept { return t == BlockType::AIR || IsCross(t); }
 
 	// A floor water can rest and spread, if water below is NOT a floor: flowing water
 	// sitting on water must not skate across the surface
@@ -109,7 +109,7 @@ void WorldPhysics::Tick()
 		BlockType belowType = Read(belowPos);
 
 		// If the block below is air, fall down else continue
-		if (belowType != BlockType::AIR)
+		if (belowType != BlockType::AIR && !IsWater(belowType))
 			continue;
 
 		// The below block is air, so move the gravity block down by one and mark the new position dirty for the next tick
@@ -121,6 +121,10 @@ void WorldPhysics::Tick()
 		// and mark the block below the new position dirty for future gravity updates
 		m_nextDirtyBlocks.insert(pos + UP);
 		m_nextDirtyBlocks.insert(belowPos);
+
+		// Vacated cells can be flooded now, displaced water lost a cell
+		DirtyWaterAround(pos);
+		DirtyWaterAround(belowPos);
 	}
 
 	std::swap(m_dirtyBlocks, m_nextDirtyBlocks);
@@ -414,6 +418,7 @@ void WorldPhysics::TickWater()
 
 		m_world->SetBlock(pos.x, pos.y, pos.z, type);
 		DirtyWaterAround(pos);
+		m_nextDirtyBlocks.insert(pos + UP);			// For sand/gravel resting on a cell that just turned air or water
 	}
 	m_waterWrites.clear();
 }
@@ -429,15 +434,26 @@ BlockType WorldPhysics::ComputeWaterState(const glm::ivec3& p) const
 		return BlockType::WATER_FALLING;
 
 	int best = INT_MAX;
+	int adjacentSources = 0;
 	for (const auto& d : HORIZONTAL)
 	{
 		const glm::ivec3 n = p + d;
 		const BlockType t = Read(n);
 
+		if (IsSource(t))
+			++adjacentSources;
+
 		// Only neighbors that actually spread sideways can feel this cell: a neighbor that is
 		// falling through air or flowing on top of water doesn't push water out to its sides
 		if (IsWater(t) && SpreadSideways(n, t))
 			best = std::min(best, FlowDistance(t));
+	}
+
+	if (INFINITE_SOURCES && adjacentSources >= 2)
+	{
+		const BlockType below = Read(p + DOWN);
+		if (BlocksFlow(below) || IsSource(below))
+			return BlockType::WATER;
 	}
 
 	if (best == INT_MAX || best + 1 > MAX_FLOW_DIST)

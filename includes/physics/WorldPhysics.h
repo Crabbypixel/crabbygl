@@ -22,8 +22,9 @@ public:
     static constexpr float TICK_RATE = 20.0f;          // 20 ticks per second
 	static constexpr float TICK_DT = 1.0f / TICK_RATE;
     static constexpr int MAX_FLOW_DIST = 7;            // Flowing water reaches 7 cells from a source/falling water
-    static constexpr int WATER_TICK_INTERVAL = 10;     // Update water every Nth physics tick, increase later
+    static constexpr int WATER_TICK_INTERVAL = 5;      // Update water every Nth physics tick, increase later
     static constexpr int DROP_SEARCH_RADIUS = 4;       // How far flowing water looks for a hole to drain
+    static constexpr bool INFINITE_SOURCES = true;     // 2 horizontal sources over a floor make a third
 
 	// Call every frame with real delta time, but physics will only update at fixed intervals (TICK_DT)
 	void Update(float dt);
