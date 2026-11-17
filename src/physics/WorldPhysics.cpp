@@ -237,6 +237,109 @@ bool WorldPhysics::SpreadSideways(const glm::ivec3& p, BlockType type) const
 	return IsSource(type) || BlocksFlow(below);
 }
 
+void WorldPhysics::FindFlowDirections(const glm::ivec3& p, bool outDirs[4]) const
+{
+	// Flow only toward the nearest drop within DROP_SEARCH_RADIUS:
+	// if no drop is in reach, flow in every open direction
+	// One BFS over a small fixed grid, each cell tagged with which first step(s) reach it
+
+	constexpr int R = DROP_SEARCH_RADIUS;
+	constexpr int W = 2 * R + 1;		// Grid centered on p: grid(R,R) == world p
+
+	uint8_t mask[W][W] = {};		// bit i = reachable on a shortest path whose first step is horizontal[i]
+	int8_t depth[W][W];				// -1 unvisited, -2 wall, else steps from p
+
+	for (auto& row : depth)
+		for (auto& d : row)
+			d = -1;
+
+	auto passable = [&](BlockType t) { return IsReplaceable(t) || (IsWater(t) && !IsSource(t)); };
+	auto isDrop = [&](const glm::ivec3& c) { return !BlocksFlow(Read(c + DOWN)); };
+
+	glm::ivec2 frontier[W * W];
+	int frontierCount = 0;
+
+	// Depth 1: the four neighbours, each tagged with its own direction bit
+	for (int i = 0; i < 4; ++i)
+	{
+		outDirs[i] = false;
+		const glm::ivec3 n = p + HORIZONTAL[i];
+		if (!passable(Read(n)))
+			continue;
+
+		const int gx = R + HORIZONTAL[i].x, gz = R + HORIZONTAL[i].z;
+		depth[gx][gz] = 1;
+		mask[gx][gz] = static_cast<uint8_t>(1u << i);
+		frontier[frontierCount++] = { gx, gz };
+	}
+
+	if (frontierCount == 0)
+		return;		// Boxed in
+
+	depth[R][R] = 0;	// Never route back through the origin
+
+	uint8_t open = 0;
+	for (int k = 0; k < frontierCount; ++k)
+		open |= mask[frontier[k].x][frontier[k].y];
+
+	for (int d = 1; d <= R && frontierCount > 0; ++d)
+	{
+		// Any drop at this depth? The union of their first steps is the answer
+		uint8_t dropMask = 0;
+		for (int k = 0; k < frontierCount; ++k)
+		{
+			const glm::ivec2 g = frontier[k];
+			if (isDrop({ p.x + g.x - R, p.y, p.z + g.y - R }))
+				dropMask |= mask[g.x][g.y];
+		}
+
+		if (dropMask)
+		{
+			for (int i = 0; i < 4; ++i)
+				outDirs[i] = (dropMask >> i) & 1u;
+			return;
+		}
+
+		// Expand to depth d + 1
+		glm::ivec2 next[W * W];
+		int nextCount = 0;
+		for (int k = 0; k < frontierCount; ++k)
+		{
+			const glm::ivec2 g = frontier[k];
+			for (const auto& h : HORIZONTAL)
+			{
+				const int nx = g.x + h.x, nz = g.y + h.z;
+				if (nx < 0 || nx >= W || nz < 0 || nz >= W)
+					continue;
+
+				if (depth[nx][nz] == -1)
+				{
+					if (!passable(Read({ p.x + nx - R, p.y, p.z + nz - R })))
+					{
+						depth[nx][nz] = -2;		// Wall, don't re-read
+						continue;
+					}
+
+					depth[nx][nz] = static_cast<int8_t>(d + 1);
+					next[nextCount++] = { nx, nz };
+				}
+
+				// Equal-length paths from different first steps both count
+				if (depth[nx][nz] == d + 1)
+					mask[nx][nz] |= mask[g.x][g.y];
+			}
+		}
+
+		for (int k = 0; k < nextCount; ++k)
+			frontier[k] = next[k];
+		frontierCount = nextCount;
+	}
+
+	// No drop in reach: spread everywhere open
+	for (int i = 0; i < 4; ++i)
+		outDirs[i] = (open >> i) & 1u;
+}
+
 void WorldPhysics::ComputeOutflow(const glm::ivec3& p, BlockType state)
 {
 	const glm::ivec3 belowPos = p + DOWN;
@@ -257,10 +360,16 @@ void WorldPhysics::ComputeOutflow(const glm::ivec3& p, BlockType state)
 	if (nextFlow > MAX_FLOW_DIST)
 		return;
 
+	bool dirs[4];
+	FindFlowDirections(p, dirs);
+
 	const BlockType nextWaterFlow = MakeFlowing(nextFlow);
-	for (const auto& d : HORIZONTAL)
+	for (int i = 0; i < 4; i++)
 	{
-		const glm::ivec3 n = p + d;
+		if (!dirs[i])
+			continue;
+
+		const glm::ivec3 n = p + HORIZONTAL[i];
 		const BlockType t = Read(n);
 
 		// Upgrade weaker flowing water if a stronger one exists, a second source can raise this flow
@@ -289,7 +398,7 @@ void WorldPhysics::TickWater()
 		if (state != currentCell)
 			ProposeWrite(pos, state);		// May be air, loses to any neighbor feeding this cell
 
-		else if (state != BlockType::AIR)
+		if (state != BlockType::AIR)
 			ComputeOutflow(pos, state);		// Push from the NEW state, so a weakening cell pushes weaker water
 	}
 	m_waterDirty.clear();
