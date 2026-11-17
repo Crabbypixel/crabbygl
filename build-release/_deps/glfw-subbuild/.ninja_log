@@ -1,0 +1,21 @@
+# ninja log v7
+5	84	8166530847892931	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-mkdir	9deb36c1a6c7c2c0
+5	84	8166530847892931	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-mkdir	9deb36c1a6c7c2c0
+85	4123	8166530888259969	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-download	8327d075485005e1
+85	4123	8166530888259969	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-download	8327d075485005e1
+4123	4287	8166530888414607	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-update	1904a9aed8408515
+4123	4287	8166530888414607	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-update	1904a9aed8408515
+4287	4361	8166530890639124	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-patch	809363403a9215a2
+4287	4361	8166530890639124	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-patch	809363403a9215a2
+4361	4434	8166530891429231	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-configure	50f10830e0ecb9bc
+4361	4434	8166530891429231	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-configure	50f10830e0ecb9bc
+4434	4508	8166530892084120	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-build	39cf34092fd235e6
+4434	4508	8166530892084120	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-build	39cf34092fd235e6
+4508	4582	8166530892846149	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-install	8e6cc9d4c1207186
+4508	4582	8166530892846149	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-install	8e6cc9d4c1207186
+4582	4656	8166530893639805	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-test	b4c06a4a747f02ea
+4582	4656	8166530893639805	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-test	b4c06a4a747f02ea
+4656	4756	8166530894591304	CMakeFiles/glfw-populate-complete	a7a0d6b2e9787909
+4656	4756	8166530894591304	glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-done	a7a0d6b2e9787909
+4656	4756	8166530894591304	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/CMakeFiles/glfw-populate-complete	a7a0d6b2e9787909
+4656	4756	8166530894591304	D:/Dev/CrabbyGL/build-release/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-done	a7a0d6b2e9787909

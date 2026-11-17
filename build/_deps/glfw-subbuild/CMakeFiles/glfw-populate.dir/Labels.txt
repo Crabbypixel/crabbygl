@@ -1,0 +1,14 @@
+# Target labels
+ glfw-populate
+# Source files and their labels
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/CMakeFiles/glfw-populate
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/CMakeFiles/glfw-populate.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/CMakeFiles/glfw-populate-complete.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-build.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-configure.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-download.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-install.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-mkdir.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-patch.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-test.rule
+D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/glfw-populate-prefix/src/glfw-populate-stamp/glfw-populate-update.rule

@@ -7,6 +7,7 @@
 #include <shared_mutex>
 #include <array>
 #include <cstring>
+#include <iosfwd>
 
 constexpr int CX = 16;
 constexpr int CY = 256;
