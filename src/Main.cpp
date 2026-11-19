@@ -367,7 +367,8 @@ public:
 		// Toggle AO
 		chunkMeshShader.setBool("u_isAOEnabled", isAOEnabled);
 
-		// Day/night: per-frame uniforms only, world/lighting state untouched
+		// ----- Sky ------------------------------------------------
+		// Sky - Day/night: per-frame uniforms only, world/lighting state untouched
 		const glm::vec3 lightDir = dayCycle.LightDir();
 		//chunkMeshShader.setVec3("u_lightDir", lightDir);
 		chunkMeshShader.setVec3("u_lightDir", glm::vec3(0.0f, -1.0f, 0.0f));
