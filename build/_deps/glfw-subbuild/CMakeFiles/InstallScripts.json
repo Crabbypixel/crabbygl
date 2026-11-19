@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"D:/Dev/CrabbyGL/build/_deps/glfw-subbuild/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
