@@ -2,7 +2,6 @@
 bin/
 x64/
 Release/
-assets/textures/test
 *.exe
 *.obj
 *.pdb
@@ -19,6 +18,10 @@ assets/textures/test
 # Saves (world data — optional, exclude for clean repo)
 saves/
 backups/
+
+# CMake and Sanitizers
+build*/
+tsan.log
 
 # Dependencies (if vendored and large)
 # vendor/  <- only ignore if deps are huge
