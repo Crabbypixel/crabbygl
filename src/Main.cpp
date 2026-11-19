@@ -225,7 +225,11 @@ public:
 		// ImGui - new frame settings
 		ImGui_ImplOpenGL3_NewFrame();
 		DrainUiEvents();
-		ImGui_ImplGlfw_NewFrame();
+		// Replaces ImGui_ImplGlfw_NewFrame() : it polls glfwGetCursorPos / glfwGetInputMode from this (non - main)
+		// thread, racing glfwPollEvents, all it provided is either already queued (input) or known here
+		ImGuiIO & io = ImGui::GetIO();
+		io.DisplaySize = ImVec2((float)ScreenWidth(), (float)ScreenHeight());	// Window is non-resizable
+		io.DeltaTime = dt > 0.0f ? dt : 1.0f / 60.0f;							// NewFrame asserts > 0
 		ImGui::NewFrame();
 
 		// Bind to the custom framebuffer

@@ -104,6 +104,7 @@ bool Inventory::Load(const std::string& filepath)
 
 bool Inventory::Save()
 {
+	std::filesystem::create_directories("saves");
 	std::ofstream f(inventorySaveFilePath, std::ios::binary);
 
 	if (!f)

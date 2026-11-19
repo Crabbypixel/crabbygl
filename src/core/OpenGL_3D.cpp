@@ -302,9 +302,6 @@ void OpenGL_3D::Start()
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
-	// Otherwise ImGui_ImplGlfw_NewFrame calls glfwSetCursor (main-thread-only) from the renderer every frame
-	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-	ImGui_ImplGlfw_InitForOpenGL(window, false);
 
 	// Make the window context null before calling the renderer thread
 	glfwMakeContextCurrent(nullptr);
@@ -351,7 +348,6 @@ void OpenGL_3D::Start()
 
 	// Cleanup functions
 	// Renderer has shut down the GL backend (Destroy) before exiting
-	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 
 	glfwDestroyWindow(window);

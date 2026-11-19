@@ -1,0 +1,8 @@
+# Leaks inside the GL driver / X11 at exit, not ours
+leak:libGLX_mesa
+leak:libgallium
+leak:swrast_dri
+leak:libLLVM
+leak:libX11
+leak:libxcb
+leak:libdrm
