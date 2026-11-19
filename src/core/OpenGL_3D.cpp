@@ -5,6 +5,11 @@
 #include <chrono>
 #include <cmath>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+
+ImGuiKey ImGui_ImplGlfw_KeyToImGuiKey(int keycode, int scancode);
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -219,7 +224,11 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
 	m_height = height;
 
 	// Initialize GLFW and initialize OpenGL to version 3.3
-	glfwInit();
+	// Without this GLFW failures are silent; the reason (no display, no matching GL visual, ...) is only reported here
+	glfwSetErrorCallback([](int code, const char* desc) { std::cerr << "GLFW error " << code << ": " << desc << '\n'; });
+	if (!glfwInit())
+		Error("glfwInit failed");
+
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -282,6 +291,20 @@ void OpenGL_3D::Start()
 	glfwSetCursorPosCallback(window, mouse_callback);
 	glfwSetScrollCallback(window, scroll_callback);
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetKeyCallback(window, key_callback);
+	glfwSetCharCallback(window, char_callback);
+	glfwSetWindowFocusCallback(window, focus_callback);
+
+	/* ImGui platform backend lives on the main thread : Init / Shutdown call GLFW functions that are
+	 * main-thread-only (error callback, cursor creation). install_callbacks=false: our callbacks
+	 * above queue events instead (see DrainUiEvents). Renderer thread still owns the GL backend.
+	 */
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+	// Otherwise ImGui_ImplGlfw_NewFrame calls glfwSetCursor (main-thread-only) from the renderer every frame
+	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+	ImGui_ImplGlfw_InitForOpenGL(window, false);
 
 	// Make the window context null before calling the renderer thread
 	glfwMakeContextCurrent(nullptr);
@@ -327,6 +350,10 @@ void OpenGL_3D::Start()
 		rendererThread.join();
 
 	// Cleanup functions
+	// Renderer has shut down the GL backend (Destroy) before exiting
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
 	glfwDestroyWindow(window);
 	glfwTerminate();
 }
@@ -344,7 +371,11 @@ void OpenGL_3D::ErrorLog(const std::string& str)
 void OpenGL_3D::Error(const std::string& message)
 {
 	std::cerr << "Error: " << message << std::endl;
-	Destroy();
+
+	// Destroy runs only if Setup() ran on renderer thread
+	if(m_bIsRunning)
+		Destroy();
+
 	glfwTerminate();
 	exit(EXIT_FAILURE);
 }
@@ -352,7 +383,8 @@ void OpenGL_3D::Error(const std::string& message)
 void OpenGL_3D::PollKeys()
 {
 	std::lock_guard<std::mutex> lock(m_keyMutex);
-	for (int i = 0; i < MAX_KEYS; ++i)
+	// Codes below GLFW_KEY_SPACE aren't keys; glfwGetKey rejects them with GLFW_INVALID_ENUM
+	for (int i = GLFW_KEY_SPACE; i < MAX_KEYS; ++i)
 		m_keyRaw[i] = (glfwGetKey(window, i) == GLFW_PRESS);
 }
 
@@ -364,11 +396,18 @@ void OpenGL_3D::mouse_callback(GLFWwindow* window, double xPos, double yPos)
 	instance->m_mousePosX = (float)xPos;
 	instance->m_mousePosY = (float)yPos;
 	instance->bFirstMouse = false;
+
+	// Queued a click must be replayed at the position it happened:
+	// i.e. after the move that preceded it, or ImGui hit-tests last frame's position
+	// Same for other callbacks
+	instance->PushUiEvent({ .type = UiEvent::Type::CursorPos, .x = xPos, .y = yPos });
 }
 
 void OpenGL_3D::scroll_callback(GLFWwindow* window, double xOffset, double yOffset)
 {
 	OpenGL_3D* instance = static_cast<OpenGL_3D*>(glfwGetWindowUserPointer(window));
+
+	instance->PushUiEvent({ .type = UiEvent::Type::Scroll, .x = xOffset, .y = yOffset });
 
 	if ((int)yOffset == 1)
 		instance->m_mouseScroll.store((int)Mouse::SCROLL_UP, std::memory_order_relaxed);
@@ -381,6 +420,65 @@ void OpenGL_3D::mouse_button_callback(GLFWwindow* window, int button, int action
 	OpenGL_3D* instance = static_cast<OpenGL_3D*>(glfwGetWindowUserPointer(window));
 	if (button < MAX_MOUSE_BUTTONS)
 		instance->m_bMouseButtonHeld[button].store(action != GLFW_RELEASE, std::memory_order_relaxed);
+
+	instance->PushUiEvent({ .type = UiEvent::Type::MouseButton, .a = button, .b = action });
+}
+
+void OpenGL_3D::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	// Game keys are still polled in PollKeys(): this path feeds ImGui only
+	if (action == GLFW_REPEAT)
+		return;
+	static_cast<OpenGL_3D*>(glfwGetWindowUserPointer(window))->PushUiEvent({ .type = UiEvent::Type::Key, .a = key, .b = scancode, .c = action, .d = mods });
+}
+
+void OpenGL_3D::char_callback(GLFWwindow* window, unsigned int codepoint)
+{
+	static_cast<OpenGL_3D*>(glfwGetWindowUserPointer(window))->PushUiEvent({ .type = UiEvent::Type::Char, .a = (int)codepoint });
+}
+
+void OpenGL_3D::focus_callback(GLFWwindow* window, int focused)
+{
+	static_cast<OpenGL_3D*>(glfwGetWindowUserPointer(window))->PushUiEvent({ .type = UiEvent::Type::Focus, .a = focused });
+}
+
+void OpenGL_3D::PushUiEvent(const UiEvent& e)
+{
+	std::lock_guard lock(m_uiEventMutex);
+	m_uiEvents.push_back(e);
+}
+
+void OpenGL_3D::DrainUiEvents()
+{
+	m_uiEventsDrain.clear();
+	{
+		std::lock_guard lock(m_uiEventMutex);
+		m_uiEventsDrain.swap(m_uiEvents);
+	}
+
+	ImGuiIO& io = ImGui::GetIO();
+	for (const UiEvent& e : m_uiEventsDrain)
+	{
+		switch (e.type)
+		{
+			case UiEvent::Type::Key:
+			{
+				// Modifiers from the event itself: the backend's version calls glfwGetKey -> 
+				// reads GLFW's key array from this thread while the main thread writes it
+				io.AddKeyEvent(ImGuiMod_Ctrl, (e.d & GLFW_MOD_CONTROL) != 0);
+				io.AddKeyEvent(ImGuiMod_Shift, (e.d & GLFW_MOD_SHIFT) != 0);
+				io.AddKeyEvent(ImGuiMod_Alt, (e.d & GLFW_MOD_ALT) != 0);
+				io.AddKeyEvent(ImGuiMod_Super, (e.d & GLFW_MOD_SUPER) != 0);
+				io.AddKeyEvent(ImGui_ImplGlfw_KeyToImGuiKey(e.a, e.b), e.c == GLFW_PRESS);
+				break;
+			}
+			case UiEvent::Type::Char:		 { io.AddInputCharacter((unsigned int)e.a); break; }
+			case UiEvent::Type::CursorPos:	 { io.AddMousePosEvent((float)e.x, (float)e.y); break; }
+			case UiEvent::Type::MouseButton: { io.AddMouseButtonEvent(e.a, e.b == GLFW_PRESS); break; }
+			case UiEvent::Type::Scroll:		 { io.AddMouseWheelEvent((float)e.x, (float)e.y); break; }
+			case UiEvent::Type::Focus:		 { io.AddFocusEvent(e.a != 0); break; }
+		}
+	}
 }
 
 // GPU Debug and Information

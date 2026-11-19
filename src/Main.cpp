@@ -210,12 +210,8 @@ public:
 			// ------------------------------------------------------
 		}
 
-		// Initialize ImGui
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-		ImGuiIO& io = ImGui::GetIO();
-		ImGui::StyleColorsDark();
-		ImGui_ImplGlfw_InitForOpenGL(window, true);
+		// ImGui context + GLFW backend are created on the main thread (OpenGL_3D::Start);
+		// only the GL backend belongs here, where the context is current
 		ImGui_ImplOpenGL3_Init("#version 330");
 
 		// Enable transparency
@@ -228,6 +224,7 @@ public:
 	{
 		// ImGui - new frame settings
 		ImGui_ImplOpenGL3_NewFrame();
+		DrainUiEvents();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
@@ -726,8 +723,6 @@ public:
 		world.UnloadChunks();			// Unload all chunks
 
 		ImGui_ImplOpenGL3_Shutdown();
-		ImGui_ImplGlfw_Shutdown();
-		ImGui::DestroyContext();
 
 		glDeleteFramebuffers(1, &framebuffer);
 		glDeleteRenderbuffers(1, &rbo);

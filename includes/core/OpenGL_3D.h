@@ -16,6 +16,7 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <vector>
 
 // Constants
 constexpr float PI = 3.14159f;
@@ -34,8 +35,8 @@ private:
 	std::atomic<bool> m_bIsRunning{ false };
 
 	// Maximum number of keys supported in GLFW
-	static constexpr int MAX_KEYS = GLFW_KEY_LAST;
 	static constexpr int MAX_MOUSE_BUTTONS = 3;
+	static constexpr int MAX_KEYS = GLFW_KEY_LAST + 1;		// GLFW_KEY_LAST is a valid key, arrays are indexed by key code
 
 	// Key state structure
 	struct sKeyState
@@ -78,6 +79,24 @@ private:
 	// as the main thread can update the scroll at any time, we want to flush out asap
 	int m_mouseScrollFrame = 0;
 
+	/* ImGui input forwarding
+	 * GLFW delivers input on the main thread, but ImGui lives on the renderer thread.
+	 * ImGui's own GLFW callbacks push straight into io's event queue -> races ImGui::NewFrame()
+	 * (ImVector realloc under the reader = heap corruption). So callbacks only record raw events
+	 * here, and the renderer replays them into ImGuiIO before NewFrame.
+	 */
+	struct UiEvent
+	{
+		enum class Type : uint8_t { Key, Char, CursorPos, MouseButton, Scroll, Focus } type;
+		int a = 0, b = 0, c = 0, d = 0;		// Key: key, scancode, action, mods | Char: codepoint | MouseButton: button, action | Focus: focused
+		double x = 0.0, y = 0.0;			// Scroll offsets | Cursor position
+	};
+	std::mutex m_uiEventMutex;				// Guards m_uiEvents only; held for one push_back or one swap
+	std::vector<UiEvent> m_uiEvents;		// Main thread appends
+	std::vector<UiEvent> m_uiEventsDrain;	// Renderer-thread-only: swap target so neither side reallocates every frame
+
+	void PushUiEvent(const UiEvent& e);
+
 	// Atomic variable for cursor visibility - renderer writes, main reads
 	std::atomic<bool> m_cursorVisible{ false };
 
@@ -105,6 +124,9 @@ protected:
 	// Call from Update(), the atomic m_cursorVisible flag toggles cursor visibility
 	// GLFW only allows cursor visibility to be changed from the main thread
 	void RequestCursor(bool visible) noexcept { m_cursorVisible.store(visible, std::memory_order_relaxed); }
+
+	// Renderer thread: call once per frame before ImGui_ImplGlfw_NewFrame()
+	void DrainUiEvents();
 
 private:
 	// Main renderer thread which constantly renders to the screen
@@ -178,4 +200,7 @@ private:
 	static void mouse_callback(GLFWwindow* window, double xPos, double yPos);
 	static void scroll_callback(GLFWwindow* window, double xOffset, double yOffset);
 	static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
+	static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+	static void char_callback(GLFWwindow* window, unsigned int codepoint);
+	static void focus_callback(GLFWwindow* window, int focused);
 };
