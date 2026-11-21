@@ -56,8 +56,18 @@ void Shader::load(const std::string& shaderPath)
 	unsigned int fs = CompileShader(GL_FRAGMENT_SHADER, fragmentShader, shaderPath);
 	unsigned int gs;
 
+#ifdef __EMSCRIPTEN__
+	// GLES 3.0 / WebGL2 has no geometry stage. No shader uses one today; fail loudly
+	// if one is added instead of rendering garbage.
+	if (isGeometryShaderPresent)
+	{
+		std::cerr << "[OpenGL Error] geometry shaders unsupported on web: " << shaderPath << std::endl;
+		isGeometryShaderPresent = false;
+	}
+#else
 	if (isGeometryShaderPresent)
 		gs = CompileShader(GL_GEOMETRY_SHADER, geometryShader, shaderPath);
+#endif
 
 	// Link shaders
 	m_id = glCreateProgram();
@@ -236,8 +246,10 @@ unsigned int Shader::CompileShader(unsigned int type, const std::string& source,
 			std::cerr << "vertex";
 		else if (type == GL_FRAGMENT_SHADER)
 			std::cerr << "fragment";
+#ifndef __EMSCRIPTEN__
 		else if (type == GL_GEOMETRY_SHADER)
 			std::cerr << "geometry";
+#endif
 
 		std::cerr << " shader in \'" << shaderPath << "\'" << std::endl;
 		std::cerr << "Log: " << message << std::endl;
