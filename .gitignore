@@ -22,6 +22,7 @@ backups/
 # CMake and Sanitizers
 build*/
 tsan.log
+asan.log
 
 # Dependencies (if vendored and large)
 # vendor/  <- only ignore if deps are huge
