@@ -76,8 +76,8 @@ private:
 
     // Final writes after one water step, after each cell has been evaulated for that physics update
     std::unordered_map<glm::ivec3, BlockType, IVec3Hash> m_waterWrites;
-
-    // Runs one tick of water updates, similar to sand/gravel physics
+    
+    // Runs one tick of water updates; similar to sand/gravel physics
     void TickWater();
 
     [[nodiscard]] bool SpreadSideways(const glm::ivec3& p, BlockType type) const; // Returns if water can flow sideways
