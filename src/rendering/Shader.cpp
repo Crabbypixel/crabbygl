@@ -1,4 +1,3 @@
-
 #include "rendering/Shader.h"
 
 #ifdef __EMSCRIPTEN__

@@ -107,7 +107,7 @@ add_custom_target(run
 
 # ---------------------------------------------------------------------------
 # Web (Emscripten). Configure with:  emcmake cmake -B build-web && cmake --build build-web
-# Output: build-web/index.html/.js/.wasm/.data -> serve with web/serve.py (COOP/COEP).
+# Output: build-web/index.html/.js/.wasm/.data -> serve with web/server.py (COOP/COEP).
 # ---------------------------------------------------------------------------
 if(EMSCRIPTEN)
     # -pthread must be on EVERY translation unit (imgui too), not just the link:
@@ -135,4 +135,9 @@ if(EMSCRIPTEN)
         # "assets/..." because the web cwd is "/".
         --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets
         -sASSERTIONS=1)
+
+    # --preload-file is a link step, but CMake doesn't know the assets are inputs:
+    # editing only a shader would leave a stale index.data. Make every asset a link dependency.
+    file(GLOB_RECURSE CRABBY_ASSETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/*)
+    set_property(TARGET CrabbyGL APPEND PROPERTY LINK_DEPENDS ${CRABBY_ASSETS})
 endif()
