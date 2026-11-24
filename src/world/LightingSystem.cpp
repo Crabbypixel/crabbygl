@@ -126,11 +126,13 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 			const int eTorch = GetTorchLight(chunk,			edgePos.x,	 edgePos.y,   edgePos.z);
 			const int nSun	 = GetSunlight(neighborChunk,	borderPos.x, borderPos.y, borderPos.z);
 			const int eSun	 = GetSunlight(chunk,			edgePos.x,   edgePos.y,   edgePos.z);
-			
+
+			// Light never enters an opaque cell, Seeding one turns the wall itself into a
+			// BFS source -> light leaks out of its far side
 			const bool edgeOpaque = IsOpaque(chunk->GetUnchecked(edgePos.x, edgePos.y, edgePos.z));
 			
 			// In: neighbor -> this chunk
-			if (nTorch > 1 && eTorch < nTorch - 1)
+			if (!edgeOpaque && nTorch > 1 && eTorch < nTorch - 1)
 			{
 				SetTorchLightUnsafe(chunk, edgePos.x, edgePos.y, edgePos.z, nTorch - 1);
 				MarkVisited(chunk);
@@ -139,19 +141,19 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 
 			// Out: neighbor -> this chunk, worker BFS stopped at the border; re-queue edge
 			// cell only if it would actually spread the light
-			else if (!edgeOpaque && eTorch > 1 && nTorch + 2 <= eTorch)
+			else if (eTorch > 1 && nTorch + 2 <= eTorch)
 			{
 				m_torchlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}
 
-			if (nSun > 1 && eSun < nSun - 1)
+			if (!edgeOpaque && nSun > 1 && eSun < nSun - 1)
 			{
 				SetSunlightUnsafe(chunk, edgePos.x, edgePos.y, edgePos.z, nSun - 1);
 				MarkVisited(chunk);
 				m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}
 
-			else if (!edgeOpaque && eSun > 1 && nSun + 2 <= eSun)
+			else if (eSun > 1 && nSun + 2 <= eSun)
 			{
 				m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}

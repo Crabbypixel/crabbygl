@@ -665,7 +665,9 @@
     <None Include="assets\shaders\Line.glsl" />
     <None Include="imgui.ini" />
     <None Include="libraries\glfw3.dll" />
+    <None Include="lsan.supp" />
     <None Include="README.md" />
+    <None Include="tsan.supp" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="libraries\glfw3.lib" />
@@ -682,6 +684,11 @@
     <Image Include="assets\textures\icons.png" />
     <Image Include="assets\textures\player_inventory.png" />
     <Image Include="assets\textures\textures.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="asan.log" />
+    <Text Include="CMakeLists.txt" />
+    <Text Include="tsan.log" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

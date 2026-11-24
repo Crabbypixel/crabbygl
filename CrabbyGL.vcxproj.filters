@@ -1537,9 +1537,11 @@
     <None Include="assets\shaders\DebugRect.glsl" />
     <None Include="assets\shaders\Icons.glsl" />
     <None Include="assets\shaders\ASCII.glsl" />
-    <None Include="CrabbyGL.exe" />
     <None Include="assets\shaders\Sun.glsl" />
     <None Include="assets\shaders\Sky.glsl" />
+    <None Include="tsan.supp" />
+    <None Include="lsan.supp" />
+    <None Include="CrabbyGL.exe" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="libraries\glfw3.lib" />
@@ -1574,5 +1576,10 @@
     <Image Include="assets\greedy_uniform.png">
       <Filter>Resource Files</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="CMakeLists.txt" />
+    <Text Include="tsan.log" />
+    <Text Include="asan.log" />
   </ItemGroup>
 </Project>
