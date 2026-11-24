@@ -127,6 +127,8 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 			const int nSun	 = GetSunlight(neighborChunk,	borderPos.x, borderPos.y, borderPos.z);
 			const int eSun	 = GetSunlight(chunk,			edgePos.x,   edgePos.y,   edgePos.z);
 			
+			const bool edgeOpaque = IsOpaque(chunk->GetUnchecked(edgePos.x, edgePos.y, edgePos.z));
+			
 			// In: neighbor -> this chunk
 			if (nTorch > 1 && eTorch < nTorch - 1)
 			{
@@ -137,7 +139,7 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 
 			// Out: neighbor -> this chunk, worker BFS stopped at the border; re-queue edge
 			// cell only if it would actually spread the light
-			else if (eTorch > 1 && nTorch + 2 <= eTorch)
+			else if (!edgeOpaque && eTorch > 1 && nTorch + 2 <= eTorch)
 			{
 				m_torchlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}
@@ -149,7 +151,7 @@ void LightingSystem::InitChunkLight(Chunk* chunk)
 				m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}
 
-			else if (eSun > 1 && nSun + 2 <= eSun)
+			else if (!edgeOpaque && eSun > 1 && nSun + 2 <= eSun)
 			{
 				m_sunlightBFSQueue.emplace(Encode(edgePos.x, edgePos.y, edgePos.z), chunk);
 			}
