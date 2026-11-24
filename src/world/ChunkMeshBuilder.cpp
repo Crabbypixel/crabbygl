@@ -50,6 +50,7 @@
 #include <glm/glm.hpp>
 #include <bit>          // std::countr_zero — C++20
 #include <cstring>      // memcpy
+#include <algorithm>
 
 #include "world/BlockRegistry.h"
 #include "world/Chunk.h"
@@ -164,27 +165,31 @@ static constexpr bool UV_INV_COL[6]  = { false, true, false, true, false, true }
 // Face cell
 // =========================================================================
 struct alignas(4) FaceCell {
-    uint32_t  key;    // 0 = invisible; packed key used for merge decisions
-    BlockType type;   // block type at this cell
-    uint8_t   ao[4];  // raw AO [0..3] for vertices 0..3
-    uint8_t   lightValue;
+    uint32_t  key;      // 0 = invisible; packed key used for merge decisions
+    BlockType type;     // block type at this cell
+    uint8_t   ao[4];    // raw AO [0..3] for vertices 0..3
+    uint8_t   light[4]; // smoothed (sky << 4 | block) per vertex 0..3
 };
 
 
 [[nodiscard]] static uint32_t MakeKey(
     BlockType type, const uint8_t ao[4],
-    bool useOverlay, bool flip, uint8_t lightValue) noexcept
+    bool useOverlay, bool flip, const uint8_t light[4]) noexcept
 {
     const uint32_t aoPacked =  ((uint32_t)ao[0] & 0x3)
                             | (((uint32_t)ao[1] & 0x3) << 2)
                             | (((uint32_t)ao[2] & 0x3) << 4)
                             | (((uint32_t)ao[3] & 0x3) << 6);
 
-    const uint32_t k = (uint32_t)(uint8_t)type
-                            | (aoPacked                    <<  8)
-                            | ((useOverlay ? 1u : 0u)      << 16)
-                            | ((flip       ? 1u : 0u)      << 17)
-                            | ((lightValue)                << 18);
+    uint32_t lightPacked;
+    memcpy(&lightPacked, light, 4);
+
+    // bits 0-7 type | 8-15 ao | 16 overlay | 17 flip | 18-49 light[4]
+    const uint64_t k = (uint64_t)(uint8_t)type
+                             | ((uint64_t)aoPacked               <<  8)
+                             | ((uint64_t)(useOverlay ? 1u : 0u) << 16)
+                             | ((uint64_t)(flip       ? 1u : 0u) << 17)
+                             | ((uint64_t)lightPacked            << 18);
 
     return k == 0u ? 1u : k;  // key=0 means invisible; shift non-zero AIR edge case
 }
@@ -320,6 +325,94 @@ static void ComputeAO(
     }
 }
 
+
+// =========================================================================
+// Smooth lighting helpers
+// =========================================================================
+
+static uint8_t GetLightLocal(
+    const Chunk& chunk, int x, int y, int z,
+    const Chunk* nPX, const Chunk* nNX,
+    const Chunk* nPZ, const Chunk* nNZ,
+    const Chunk* nPX_PZ, const Chunk* nPX_NZ,
+    const Chunk* nNX_PZ, const Chunk* nNX_NZ) noexcept
+{
+    if (y >= CY) return 0xF0;
+    if (y < 0) return 0;
+
+    if (x >= 0 && x < CX && z >= 0 && z < CZ)
+        return chunk.GetLightMap(x, y, z);
+
+    if (nPX && x >= CX && z >= 0 && z < CZ) return    nPX->GetLightMap(0,      y,      z);
+    if (nNX && x  <  0 && z >= 0 && z < CZ) return    nNX->GetLightMap(CX - 1, y,      z);
+    if (nPZ && z >= CZ && x >= 0 && x < CX) return    nPZ->GetLightMap(x,      y,      0);
+    if (nNX && z  <  0 && x >= 0 && x < CX) return    nNZ->GetLightMap(x,      y, CZ - 1);
+    if (nPX_PZ && x >= CX && z >= CZ)       return nPX_PZ->GetLightMap(0,      y,      0);
+    if (nPX_NZ && x >= CX && z  <  0)       return nPX_NZ->GetLightMap(0,      y, CZ - 1);
+    if (nNX_PZ && x  <  0 && z >= CZ)       return nNX_PZ->GetLightMap(CX - 1, y,      0);
+    if (nNX_NZ && x  <  0 && z  <  0)       return nNX_NZ->GetLightMap(CX - 1, y, CZ - 1);
+    
+    // Missing neighbor - replace by center by SmoothChannel
+    return 0;
+}
+
+// A 0-sample is almost always an opaque block, averaging it would darken every
+// wall-adjacent vertex a second time when AO is applied, so substitute the center
+static int SmoothChannel(int c, int s1, int s2, int k) noexcept
+{
+    if (s1 == 0) s1 = c;
+    if (s2 == 0) s2 = c;
+    if (k == 0) k = c;
+    return (c + s1 + s2 + k + 2) >> 2;
+}
+
+// Per-vertex light for one face. Samples the same 4 cells ComputeAO queries
+// (face-neighbor, side1, side2, corner) so light and AO agree spatially
+static void ComputeSmoothLight(
+    const Chunk& chunk,
+    const Chunk* nPX, const Chunk* nNX,
+    const Chunk* nPZ, const Chunk* nNZ,
+    const Chunk* nPX_PZ, const Chunk* nPX_NZ,
+    const Chunk* nNX_PZ, const Chunk* nNX_NZ,
+    const glm::ivec3& p, int face,
+    const uint8_t ao[4],
+    uint8_t outlight[4]) noexcept
+{
+    const glm::ivec3& U = TANGENT_U[face];
+    const glm::ivec3& V = TANGENT_V[face];
+    const glm::ivec3& N = NORMALS[face];
+    const glm::ivec3 base = p + N;
+
+    auto L = [&](const glm::ivec3& q) {
+        return GetLightLocal(chunk, q.x, q.y, q.z, nPX, nNX, nPZ, nNZ, nPX_PZ, nPX_NZ, nNX_PZ, nNX_NZ);
+    };
+
+    const uint8_t c = L(base);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const glm::ivec3& v = FACE_VERTS[face][i];
+        const int du = (glm::dot(glm::vec3(v), glm::vec3(U)) > 0.5f) ? 1 : -1;
+        const int dv = (glm::dot(glm::vec3(v), glm::vec3(V)) > 0.5f) ? 1 : -1;
+
+        const uint8_t s1 = L(base + du * U);
+        const uint8_t s2 = L(base + dv * V);
+        const uint8_t k = (ao[i] == 0) ? 0 : L(base + du * U + dv * V);
+
+        const int sky = SmoothChannel(c >> 4, s1 >> 4, s2 >> 4, k >> 4);
+        const int blk = SmoothChannel(c & 0xF, s1 & 0xF, s2 & 0xF, k & 0xF);
+        outlight[i] = static_cast<uint8_t>((sky << 4) | blk);
+    }
+}
+
+static bool ShouldFlip(const uint8_t ao[4], const uint8_t light[4]) noexcept
+{
+    int b[4];
+    for (int i = 0; i < 4; ++i)
+        b[i] = (ao[i] + 1) * (1 + std::max(light[i] >> 4, light[i] & 0xF));
+
+    return b[0] + b[2] > b[1] + b[3];
+}
 
 // =========================================================================
 // EmitCross - from earlier version
@@ -461,7 +554,7 @@ void ChunkMeshBuilder::EmitGreedyQuad(
     const int layerFace = layer + (axes.normalDir > 0 ? 1 : 0);
 
     // AO: all merged cells identical, use ref directly
-    const bool flip = (ref.ao[0] + ref.ao[2] > ref.ao[1] + ref.ao[3]);
+    const bool flip = ShouldFlip(ref.ao, ref.light);
 
     // Build 4 vertex positions and UVs
     Vertex verts[4] = {};
@@ -491,7 +584,7 @@ void ChunkMeshBuilder::EmitGreedyQuad(
 
 		uint8_t packed = ((uint8_t)face & 0x7) | (useOverlay << 3) | ((ref.ao[k] & 0x3) << 4);
         verts[k].packed      = packed;
-        verts[k].lightValue  = ref.lightValue;
+        verts[k].lightValue  = ref.light[k];
         verts[k].tint        = tint;
     }
 
@@ -585,34 +678,21 @@ void ChunkMeshBuilder::BuildLayer(
             }
 
             // Flip quad diagonal setup if needed to prevent rendering artifacts
-            const bool flip = (ao[0] + ao[2] > ao[1] + ao[3]);
-            const BlockType bt = chunk.GetUnchecked(localX, localY, localZ);
-            const BlockDef& def = GetDef(bt);
+            const BlockType blockType = chunk.GetUnchecked(localX, localY, localZ);
+            const BlockDef& def = GetDef(blockType);
             const bool useOverlay = def.useOverlay && face > 1;
+            
+            // Light is not cached in aoCache, light changes don't change aoDity, cache would go stale
+            uint8_t light[4];
+            ComputeSmoothLight(chunk, nPX, nNX, nPZ, nNZ, nPX_PZ, nPX_NZ, nNX_PZ, nNX_NZ,
+                { localX, localY, localZ }, face, ao, light);
 
-            const glm::ivec3 nPos = glm::ivec3(localX, localY, localZ) + NORMALS[face];
-            uint8_t lightValue = 0;
+            const bool flip = ShouldFlip(ao, light);
 
-            // Retrieve light data inside chunk bounds or handle edge fallback logic
-            if (Chunk::InBounds(nPos.x, nPos.y, nPos.z))
-            {
-                lightValue = chunk.lightMap[nPos.x][nPos.y][nPos.z];
-            }
-            else
-            {
-                // Read from neighbor chunk's lightMap
-                if (nPos.x == CX && face == POS_X && nPX) lightValue = nPX->lightMap[0][nPos.y][nPos.z];
-                if (nPos.x == -1 && face == NEG_X && nNX) lightValue = nNX->lightMap[CX - 1][nPos.y][nPos.z];
-                if (nPos.z == CZ && face == POS_Z && nPZ) lightValue = nPZ->lightMap[nPos.x][nPos.y][0];
-                if (nPos.z == -1 && face == NEG_Z && nNZ) lightValue = nNZ->lightMap[nPos.x][nPos.y][CZ - 1];
-                if (nPos.y == CY) lightValue = 0xF0;         // Full sunlight for top face of topmost block
-            }
-
-            // Store structural state and build a 32-bit key representing identical render properties
-            grid[row][col].lightValue = lightValue;
-            grid[row][col].type = bt;
+            grid[row][col].type = blockType;
             memcpy(grid[row][col].ao, ao, 4);
-            grid[row][col].key = MakeKey(bt, ao, useOverlay, flip, lightValue);
+            memcpy(grid[row][col].light, light, 4);
+            grid[row][col].key = MakeKey(blockType, ao, useOverlay, flip, light);
 
             // Mark this cell bit as active and ready for the greedy scan phase
             rowMask[row] |= static_cast<uint16_t>(1u << col);
@@ -631,7 +711,7 @@ void ChunkMeshBuilder::BuildLayer(
         {
             // Hardware instruction counts trailing zeros to jump to the next unmeshed face in one cycle
             const int col = std::countr_zero(mask);
-            const uint32_t cellKey = grid[row][col].key;
+            const uint64_t cellKey = grid[row][col].key;
 
             // Expand horizontally across the row as long as adjacent block properties match exactly
             int W = 1;

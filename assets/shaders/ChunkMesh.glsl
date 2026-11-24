@@ -26,7 +26,7 @@ flat out uint fUseOverlay;          // GLSL version 330 doesn't support flat boo
 flat out uint fNormalIndex;
 flat out uint fTileBase;
 flat out uint fTileOverlay;
-flat out uint fLightValue;
+out vec2 fLight;                     // x = sky, y = block, 0..1, interpolated -> smooth lighting
 
 void main()
 {
@@ -46,7 +46,7 @@ void main()
     fAo          = float((aPacked >> 4u) & 0x3u) / 3.0f;
 
     // Sunlight & Torchlight
-    fLightValue = aLightValue;
+    fLight = vec2(float(aLightValue >> 4u), float(aLightValue & 0xFu)) / 15.0f;
 
     // RGBA8 tint arrives normalized to 0..1
     fTint  = aTint.rgb;
@@ -102,7 +102,7 @@ flat in uint fUseOverlay;
 flat in uint fNormalIndex;
 flat in uint fTileBase;
 flat in uint fTileOverlay;
-flat in uint fLightValue;
+in vec2 fLight;
 
 out vec4 FragColor;
 
@@ -211,8 +211,8 @@ void main()
         color *= fTint;
     }
 
-   float skyExposure = float((fLightValue >> 4u) & 0xFu) / 15.0f;
-   float torch = float(fLightValue & 0xFu) / 15.0f;
+   float skyExposure = fLight.x;
+   float torch       = fLight.y;
    
    float NdotL = max(dot(normalize(NORMALS[fNormalIndex]), -normalize(u_lightDir)), 0.0f);
    

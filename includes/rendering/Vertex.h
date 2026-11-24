@@ -11,7 +11,7 @@ struct Vertex
     uint8_t   tileBase;     // Atlas tile for base texture
     uint8_t   tileOverlay;  // Atlas tile for overlay texture
     uint8_t   packed;       // [0-2] normal, [3] overlay, [4-5] AO, [6-7] unused
-    uint8_t   lightValue;   // Currently 1 byte for lighting - most significant 4 bits for sunlight, least 4 for torchlight
+    uint8_t   lightValue;   // per - vertex smoothed sky << 4 | block light
     uint32_t  tint;         // RGBA8 tint color
 
     uint32_t  _padding2;
