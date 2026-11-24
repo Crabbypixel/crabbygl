@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glad/glad.h>
+#include "rendering/GL.h"
 
 template<typename T = float>
 class VertexBuffer

@@ -238,11 +238,15 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
 		Error("glfwInit failed");
 
 #ifdef __EMSCRIPTEN__
-	// WebGL2 == GLES 3.0. A "3.3 core" request has no meaning in the browser
+	// WebGL2 == GLES 3.0. A "3.3 core" request has no meaning in the browser.
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#else
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#endif
 
 	// Make the window non-resizable
 	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
@@ -265,11 +269,15 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
 
 	// Disable V-Sync (to achieve 60+ fps)
 	// Comment this out to get 60 fps (max)
+#ifndef __EMSCRIPTEN__
+	// Web: frame pacing is requestAnimationFrame (set by emscripten_set_main_loop);
+	// calling this before the main loop exists only logs a warning.
 	glfwSwapInterval(0);
 
-	// Load all function pointers using GLAD
+	// Load all function pointers using GLAD. Web links WebGL2 directly, nothing to load.
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 		Error("Failed to initialize GLAD");
+#endif
 
 	// Set viewport and callback function when window gets resized 
 	glViewport(0, 0, m_width, m_height);
@@ -280,9 +288,10 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
 
 	// Enable multi-sampling (usually enabled, good to enable it ourselves anyways)
 #ifndef __EMSCRIPTEN__
-	// Not a GLES/WebGL2 enum, on web MSAA is the canvas `antialias`
+	// Not a GLES/WebGL2 enum (GL_INVALID_ENUM). On web MSAA is the canvas `antialias`
 	// attribute, which GLFW_SAMPLES above already requests.
 	glEnable(GL_MULTISAMPLE);
+#endif
 
 	// Make the image loading library flip textures on load by default since 
 	// OpenGL's texture coordinate system has the y-axis going 

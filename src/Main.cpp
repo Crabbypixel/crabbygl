@@ -1,4 +1,4 @@
-#include <glad/glad.h>
+#include "rendering/GL.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -420,10 +420,13 @@ public:
 
 		// Draw world
 #ifndef __EMSCRIPTEN__
-		// WebGL2 has no glPolygonMode: wireframe toggle is desktop-only (debug feature)
+		// WebGL2 has no glPolygonMode: wireframe toggle is desktop-only (debug feature).
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
+#endif
 		world.DrawAll(matProjection, camera.getLookAt());
+#ifndef __EMSCRIPTEN__
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // restore for UI/other draws
+#endif
 
 		// Draw chunk boundaries if enabled
 		chunkDebug.DrawChunkBoundary(camera.position);

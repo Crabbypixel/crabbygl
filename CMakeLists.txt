@@ -22,7 +22,14 @@ set(EXT ${CMAKE_CURRENT_SOURCE_DIR}/externals)
 # -sUSE_GLFW=3 later.
 # ---------------------------------------------------------------------------
 option(CRABBY_SYSTEM_GLFW "Use an installed glfw3 instead of fetching it" OFF)
-if(CRABBY_SYSTEM_GLFW)
+if(EMSCRIPTEN)
+    # Emscripten ships GLFW implemented in JS on top of the canvas/DOM. Nothing to
+    # build; an INTERFACE target keeps every `target_link_libraries(... glfw)` below
+    # unchanged on both platforms.
+    add_library(glfw INTERFACE)
+    target_compile_options(glfw INTERFACE -sUSE_GLFW=3)
+    target_link_options(glfw INTERFACE -sUSE_GLFW=3)
+elseif(CRABBY_SYSTEM_GLFW)
     find_package(glfw3 3.3 REQUIRED)
 else()
     include(FetchContent)
@@ -41,10 +48,13 @@ endif()
 # Vendored third-party code. Separate static libs so our warning flags don't
 # drown in their noise and they aren't recompiled when engine flags change.
 # ---------------------------------------------------------------------------
-add_library(glad STATIC ${EXT}/glad/glad.c)
-target_include_directories(glad PUBLIC ${EXT})
-# glad's built-in loader references dlopen even when we use glfwGetProcAddress.
-target_link_libraries(glad PRIVATE ${CMAKE_DL_LIBS})
+# Web: no glad. WebGL2 functions are linked directly (see rendering/GL.h).
+if(NOT EMSCRIPTEN)
+    add_library(glad STATIC ${EXT}/glad/glad.c)
+    target_include_directories(glad PUBLIC ${EXT})
+    # glad's built-in loader references dlopen even when we use glfwGetProcAddress.
+    target_link_libraries(glad PRIVATE ${CMAKE_DL_LIBS})
+endif()
 
 add_library(imgui STATIC
     ${EXT}/imgui/imgui.cpp
@@ -73,7 +83,10 @@ target_include_directories(CrabbyGL PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/includes
 target_include_directories(CrabbyGL SYSTEM PRIVATE ${EXT} ${EXT}/imgui)
 
 find_package(Threads REQUIRED)
-target_link_libraries(CrabbyGL PRIVATE glad imgui glfw Threads::Threads)
+target_link_libraries(CrabbyGL PRIVATE imgui glfw Threads::Threads)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(CrabbyGL PRIVATE glad)
+endif()
 
 if(MSVC)
     target_compile_options(CrabbyGL PRIVATE /W3 /permissive-)
@@ -94,7 +107,7 @@ add_custom_target(run
 
 # ---------------------------------------------------------------------------
 # Web (Emscripten). Configure with:  emcmake cmake -B build-web && cmake --build build-web
-# Output: build-web/index.html/.js/.wasm/.data -> serve with web/server.py (COOP/COEP).
+# Output: build-web/index.html/.js/.wasm/.data -> serve with web/serve.py (COOP/COEP).
 # ---------------------------------------------------------------------------
 if(EMSCRIPTEN)
     # -pthread must be on EVERY translation unit (imgui too), not just the link:
@@ -122,9 +135,4 @@ if(EMSCRIPTEN)
         # "assets/..." because the web cwd is "/".
         --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets
         -sASSERTIONS=1)
-
-    # --preload-file is a link step, but CMake doesn't know the assets are inputs:
-    # editing only a shader would leave a stale index.data. Make every asset a link dependency.
-    file(GLOB_RECURSE CRABBY_ASSETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/*)
-    set_property(TARGET CrabbyGL APPEND PROPERTY LINK_DEPENDS ${CRABBY_ASSETS})
 endif()
