@@ -1,5 +1,5 @@
 #include "rendering/Sun.h"
-#include <glad/glad.h>
+#include "rendering/GL.h"
 
 Sun::~Sun()
 {

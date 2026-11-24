@@ -1,5 +1,5 @@
 #pragma once
-#include <glad/glad.h>
+#include "rendering/GL.h"
 #include <vector>
 
 #include "rendering/Vertex.h"

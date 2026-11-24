@@ -1,8 +1,9 @@
 #include "stb/stb_image.h"
 
-#include <glad/glad.h>
+#include "rendering/GL.h"
 
 #include <iostream>
+#include <vector>	// was coming in transitively via libstdc++/MSVC; libc++ (Emscripten, Clang/macOS) doesn't
 
 #include "rendering/UIRenderer.h"
 #include "player/Inventory.h"

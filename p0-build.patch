@@ -1,0 +1,346 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 63a4c32..ce475a8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,7 +22,14 @@ set(EXT ${CMAKE_CURRENT_SOURCE_DIR}/externals)
+ # -sUSE_GLFW=3 later.
+ # ---------------------------------------------------------------------------
+ option(CRABBY_SYSTEM_GLFW "Use an installed glfw3 instead of fetching it" OFF)
+-if(CRABBY_SYSTEM_GLFW)
++if(EMSCRIPTEN)
++    # Emscripten ships GLFW implemented in JS on top of the canvas/DOM. Nothing to
++    # build; an INTERFACE target keeps every `target_link_libraries(... glfw)` below
++    # unchanged on both platforms.
++    add_library(glfw INTERFACE)
++    target_compile_options(glfw INTERFACE -sUSE_GLFW=3)
++    target_link_options(glfw INTERFACE -sUSE_GLFW=3)
++elseif(CRABBY_SYSTEM_GLFW)
+     find_package(glfw3 3.3 REQUIRED)
+ else()
+     include(FetchContent)
+@@ -41,10 +48,13 @@ endif()
+ # Vendored third-party code. Separate static libs so our warning flags don't
+ # drown in their noise and they aren't recompiled when engine flags change.
+ # ---------------------------------------------------------------------------
+-add_library(glad STATIC ${EXT}/glad/glad.c)
+-target_include_directories(glad PUBLIC ${EXT})
+-# glad's built-in loader references dlopen even when we use glfwGetProcAddress.
+-target_link_libraries(glad PRIVATE ${CMAKE_DL_LIBS})
++# Web: no glad. WebGL2 functions are linked directly (see rendering/GL.h).
++if(NOT EMSCRIPTEN)
++    add_library(glad STATIC ${EXT}/glad/glad.c)
++    target_include_directories(glad PUBLIC ${EXT})
++    # glad's built-in loader references dlopen even when we use glfwGetProcAddress.
++    target_link_libraries(glad PRIVATE ${CMAKE_DL_LIBS})
++endif()
+ 
+ add_library(imgui STATIC
+     ${EXT}/imgui/imgui.cpp
+@@ -73,7 +83,10 @@ target_include_directories(CrabbyGL PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/includes
+ target_include_directories(CrabbyGL SYSTEM PRIVATE ${EXT} ${EXT}/imgui)
+ 
+ find_package(Threads REQUIRED)
+-target_link_libraries(CrabbyGL PRIVATE glad imgui glfw Threads::Threads)
++target_link_libraries(CrabbyGL PRIVATE imgui glfw Threads::Threads)
++if(NOT EMSCRIPTEN)
++    target_link_libraries(CrabbyGL PRIVATE glad)
++endif()
+ 
+ if(MSVC)
+     target_compile_options(CrabbyGL PRIVATE /W3 /permissive-)
+@@ -91,3 +104,35 @@ add_custom_target(run
+     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+     DEPENDS CrabbyGL
+     USES_TERMINAL)
++
++# ---------------------------------------------------------------------------
++# Web (Emscripten). Configure with:  emcmake cmake -B build-web && cmake --build build-web
++# Output: build-web/index.html/.js/.wasm/.data -> serve with web/serve.py (COOP/COEP).
++# ---------------------------------------------------------------------------
++if(EMSCRIPTEN)
++    # -pthread must be on EVERY translation unit (imgui too), not just the link:
++    # mixing atomics-enabled and non-atomics objects fails at link time.
++    target_compile_options(imgui PRIVATE -pthread)
++    target_compile_options(CrabbyGL PRIVATE -pthread)
++
++    # GLFW_INCLUDE_NONE: glfw3.h must not drag in desktop <GL/gl.h> next to <GLES3/gl3.h>.
++    target_compile_definitions(CrabbyGL PRIVATE GLFW_INCLUDE_NONE)
++    target_compile_definitions(imgui PRIVATE GLFW_INCLUDE_NONE)
++
++    set_target_properties(CrabbyGL PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
++    target_link_options(CrabbyGL PRIVATE
++        -pthread
++        # 4 gen + 4 mesh + 1 save. World spawns all of them inside Setup(), before the
++        # first yield to the browser; a Worker that isn't pre-spawned can't start until
++        # then, so an undersized pool stalls startup.
++        -sPTHREAD_POOL_SIZE=9
++        -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2
++        # Chunk map grows with view distance; don't cap memory at the 16 MB default.
++        -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=2GB
++        -sSTACK_SIZE=1MB              # default 64 KB; BFS/greedy locals are larger
++        -sDEFAULT_PTHREAD_STACK_SIZE=1MB
++        # Packs assets/ into index.data, mounted at /assets in MEMFS. Paths stay
++        # "assets/..." because the web cwd is "/".
++        --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets
++        -sASSERTIONS=1)
++endif()
+diff --git a/includes/core/OpenGL_3D.h b/includes/core/OpenGL_3D.h
+index e35fb44..57bc51e 100644
+--- a/includes/core/OpenGL_3D.h
++++ b/includes/core/OpenGL_3D.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ // IMPORTANT: GLAD must be included BEFORE GLFW
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ #include <GLFW/glfw3.h>
+ 
+ // GLM (math library)
+diff --git a/includes/debug/ChunkDebug.h b/includes/debug/ChunkDebug.h
+index 6deac80..6ce5428 100644
+--- a/includes/debug/ChunkDebug.h
++++ b/includes/debug/ChunkDebug.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ #include "rendering/Shader.h"
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ #include <string>
+ 
+diff --git a/includes/rendering/BufferLayout.h b/includes/rendering/BufferLayout.h
+index edab685..4255c60 100644
+--- a/includes/rendering/BufferLayout.h
++++ b/includes/rendering/BufferLayout.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ #include "VertexArray.h"
+ #include "VertexBuffer.h"
+diff --git a/includes/rendering/ChunkMesh.h b/includes/rendering/ChunkMesh.h
+index 69a30c7..496d0e4 100644
+--- a/includes/rendering/ChunkMesh.h
++++ b/includes/rendering/ChunkMesh.h
+@@ -1,5 +1,5 @@
+ #pragma once
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ #include <vector>
+ 
+ #include "rendering/Vertex.h"
+diff --git a/includes/rendering/GL.h b/includes/rendering/GL.h
+new file mode 100644
+index 0000000..7f7bad4
+--- /dev/null
++++ b/includes/rendering/GL.h
+@@ -0,0 +1,11 @@
++#pragma once
++// Single GL entry point for the whole engine.
++// Desktop: GL 3.3 core through glad (function pointers loaded at runtime).
++// Web: WebGL2 == GLES 3.0. Emscripten links the GL functions directly, so there
++// is nothing to load and glad must not be compiled in at all (it would pull in
++// desktop-only enums/functions that silently don't exist in WebGL2).
++#ifdef __EMSCRIPTEN__
++    #include <GLES3/gl3.h>
++#else
++    #include <glad/glad.h>
++#endif
+diff --git a/includes/rendering/IndexBuffer.h b/includes/rendering/IndexBuffer.h
+index 8a3ca86..7c6b9db 100644
+--- a/includes/rendering/IndexBuffer.h
++++ b/includes/rendering/IndexBuffer.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ #include <cstddef>
+ 
+diff --git a/includes/rendering/Shader.h b/includes/rendering/Shader.h
+index ab19b6d..d886eef 100644
+--- a/includes/rendering/Shader.h
++++ b/includes/rendering/Shader.h
+@@ -1,5 +1,5 @@
+ #pragma once
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ #include <GLFW/glfw3.h>
+ #include <glm/glm.hpp>
+ #include <glm/gtc/type_ptr.hpp>
+diff --git a/includes/rendering/Texture2D.h b/includes/rendering/Texture2D.h
+index 1a6f52d..813de37 100644
+--- a/includes/rendering/Texture2D.h
++++ b/includes/rendering/Texture2D.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ #include <string>
+ 
+ class Texture2D
+diff --git a/includes/rendering/VertexArray.h b/includes/rendering/VertexArray.h
+index dffd47e..bd6d326 100644
+--- a/includes/rendering/VertexArray.h
++++ b/includes/rendering/VertexArray.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ class VertexArray
+ {
+diff --git a/includes/rendering/VertexBuffer.h b/includes/rendering/VertexBuffer.h
+index 378496d..1f3528b 100644
+--- a/includes/rendering/VertexBuffer.h
++++ b/includes/rendering/VertexBuffer.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ template<typename T = float>
+ class VertexBuffer
+diff --git a/src/Main.cpp b/src/Main.cpp
+index 3136b7e..569822b 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -1,4 +1,4 @@
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ #include <glm/glm.hpp>
+ #include <glm/gtc/matrix_transform.hpp>
+@@ -415,9 +415,14 @@ public:
+ 		moon.Draw(camera.position, dayCycle.SunDir());		// Draw opposite of sun
+ 
+ 		// Draw world
++#ifndef __EMSCRIPTEN__
++		// WebGL2 has no glPolygonMode: wireframe toggle is desktop-only (debug feature).
+ 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
++#endif
+ 		world.DrawAll(matProjection, camera.getLookAt());
++#ifndef __EMSCRIPTEN__
+ 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // restore for UI/other draws
++#endif
+ 
+ 		// Draw chunk boundaries if enabled
+ 		chunkDebug.DrawChunkBoundary(camera.position);
+diff --git a/src/core/OpenGL_3D.cpp b/src/core/OpenGL_3D.cpp
+index 48a1ac1..f5c6e63 100644
+--- a/src/core/OpenGL_3D.cpp
++++ b/src/core/OpenGL_3D.cpp
+@@ -229,9 +229,16 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
+ 	if (!glfwInit())
+ 		Error("glfwInit failed");
+ 
++#ifdef __EMSCRIPTEN__
++	// WebGL2 == GLES 3.0. A "3.3 core" request has no meaning in the browser.
++	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
++	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
++	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
++#else
+ 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+ 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+ 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
++#endif
+ 
+ 	// Make the window non-resizable
+ 	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+@@ -254,11 +261,15 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
+ 
+ 	// Disable V-Sync (to achieve 60+ fps)
+ 	// Comment this out to get 60 fps (max)
++#ifndef __EMSCRIPTEN__
++	// Web: frame pacing is requestAnimationFrame (set by emscripten_set_main_loop);
++	// calling this before the main loop exists only logs a warning.
+ 	glfwSwapInterval(0);
+ 
+-	// Load all function pointers using GLAD
++	// Load all function pointers using GLAD. Web links WebGL2 directly, nothing to load.
+ 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+ 		Error("Failed to initialize GLAD");
++#endif
+ 
+ 	// Set viewport and callback function when window gets resized 
+ 	glViewport(0, 0, m_width, m_height);
+@@ -268,7 +279,11 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
+ 	glDepthFunc(GL_LESS);
+ 
+ 	// Enable multi-sampling (usually enabled, good to enable it ourselves anyways)
++#ifndef __EMSCRIPTEN__
++	// Not a GLES/WebGL2 enum (GL_INVALID_ENUM). On web MSAA is the canvas `antialias`
++	// attribute, which GLFW_SAMPLES above already requests.
+ 	glEnable(GL_MULTISAMPLE);
++#endif
+ 
+ 	// Make the image loading library flip textures on load by default since 
+ 	// OpenGL's texture coordinate system has the y-axis going 
+diff --git a/src/rendering/Shader.cpp b/src/rendering/Shader.cpp
+index b0bded5..fab8425 100644
+--- a/src/rendering/Shader.cpp
++++ b/src/rendering/Shader.cpp
+@@ -56,8 +56,18 @@ void Shader::load(const std::string& shaderPath)
+ 	unsigned int fs = CompileShader(GL_FRAGMENT_SHADER, fragmentShader, shaderPath);
+ 	unsigned int gs;
+ 
++#ifdef __EMSCRIPTEN__
++	// GLES 3.0 / WebGL2 has no geometry stage. No shader uses one today; fail loudly
++	// if one is added instead of rendering garbage.
++	if (isGeometryShaderPresent)
++	{
++		std::cerr << "[OpenGL Error] geometry shaders unsupported on web: " << shaderPath << std::endl;
++		isGeometryShaderPresent = false;
++	}
++#else
+ 	if (isGeometryShaderPresent)
+ 		gs = CompileShader(GL_GEOMETRY_SHADER, geometryShader, shaderPath);
++#endif
+ 
+ 	// Link shaders
+ 	m_id = glCreateProgram();
+@@ -236,8 +246,10 @@ unsigned int Shader::CompileShader(unsigned int type, const std::string& source,
+ 			std::cerr << "vertex";
+ 		else if (type == GL_FRAGMENT_SHADER)
+ 			std::cerr << "fragment";
++#ifndef __EMSCRIPTEN__
+ 		else if (type == GL_GEOMETRY_SHADER)
+ 			std::cerr << "geometry";
++#endif
+ 
+ 		std::cerr << " shader in \'" << shaderPath << "\'" << std::endl;
+ 		std::cerr << "Log: " << message << std::endl;
+diff --git a/src/rendering/Sun.cpp b/src/rendering/Sun.cpp
+index bf1f685..f57e744 100644
+--- a/src/rendering/Sun.cpp
++++ b/src/rendering/Sun.cpp
+@@ -1,5 +1,5 @@
+ #include "rendering/Sun.h"
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ Sun::~Sun()
+ {
+diff --git a/src/rendering/UIRenderer.cpp b/src/rendering/UIRenderer.cpp
+index e1af782..97d4560 100644
+--- a/src/rendering/UIRenderer.cpp
++++ b/src/rendering/UIRenderer.cpp
+@@ -1,8 +1,9 @@
+ #include "stb/stb_image.h"
+ 
+-#include <glad/glad.h>
++#include "rendering/GL.h"
+ 
+ #include <iostream>
++#include <vector>	// was coming in transitively via libstdc++/MSVC; libc++ (Emscripten, Clang/macOS) doesn't
+ 
+ #include "rendering/UIRenderer.h"
+ #include "player/Inventory.h"

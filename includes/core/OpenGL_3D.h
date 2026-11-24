@@ -1,7 +1,7 @@
 #pragma once
 
 // IMPORTANT: GLAD must be included BEFORE GLFW
-#include <glad/glad.h>
+#include "rendering/GL.h"
 #include <GLFW/glfw3.h>
 
 // GLM (math library)
