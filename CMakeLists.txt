@@ -91,3 +91,40 @@ add_custom_target(run
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDS CrabbyGL
     USES_TERMINAL)
+
+# ---------------------------------------------------------------------------
+# Web (Emscripten). Configure with:  emcmake cmake -B build-web && cmake --build build-web
+# Output: build-web/index.html/.js/.wasm/.data -> serve with web/server.py (COOP/COEP).
+# ---------------------------------------------------------------------------
+if(EMSCRIPTEN)
+    # -pthread must be on EVERY translation unit (imgui too), not just the link:
+    # mixing atomics-enabled and non-atomics objects fails at link time.
+    target_compile_options(imgui PRIVATE -pthread)
+    target_compile_options(CrabbyGL PRIVATE -pthread)
+
+    # GLFW_INCLUDE_NONE: glfw3.h must not drag in desktop <GL/gl.h> next to <GLES3/gl3.h>.
+    target_compile_definitions(CrabbyGL PRIVATE GLFW_INCLUDE_NONE)
+    target_compile_definitions(imgui PRIVATE GLFW_INCLUDE_NONE)
+
+    set_target_properties(CrabbyGL PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
+    target_link_options(CrabbyGL PRIVATE
+        -pthread
+        # 4 gen + 4 mesh + 1 save. World spawns all of them inside Setup(), before the
+        # first yield to the browser; a Worker that isn't pre-spawned can't start until
+        # then, so an undersized pool stalls startup.
+        -sPTHREAD_POOL_SIZE=9
+        -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2
+        # Chunk map grows with view distance; don't cap memory at the 16 MB default.
+        -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=2GB
+        -sSTACK_SIZE=1MB              # default 64 KB; BFS/greedy locals are larger
+        -sDEFAULT_PTHREAD_STACK_SIZE=1MB
+        # Packs assets/ into index.data, mounted at /assets in MEMFS. Paths stay
+        # "assets/..." because the web cwd is "/".
+        --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets
+        -sASSERTIONS=1)
+
+    # --preload-file is a link step, but CMake doesn't know the assets are inputs:
+    # editing only a shader would leave a stale index.data. Make every asset a link dependency.
+    file(GLOB_RECURSE CRABBY_ASSETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/*)
+    set_property(TARGET CrabbyGL APPEND PROPERTY LINK_DEPENDS ${CRABBY_ASSETS})
+endif()

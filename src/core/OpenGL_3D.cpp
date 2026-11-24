@@ -5,6 +5,10 @@
 #include <chrono>
 #include <cmath>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 
@@ -18,147 +22,17 @@ void OpenGL_3D::RendererThread()
 	// We want the OpenGL context to be in the renderer thread (important!)
 	glfwMakeContextCurrent(window);
 
-	float fAccumulatedTime = 0.0f;
-	int iFrameCount = 0;
-
 	if (!Setup())
 		m_bIsRunning = false;
+
+	m_frameLast = std::chrono::system_clock::now();
 
 	// Update projection matrix
 	UpdateProjectionMatrix();
 
-	auto dt1 = std::chrono::system_clock::now();
-	auto dt2 = std::chrono::system_clock::now();
-
 	// Run as fast as possible
 	while (m_bIsRunning)
-	{
-		// FPS calculation
-		dt2 = std::chrono::system_clock::now();
-		std::chrono::duration<float> elapsedTime = dt2 - dt1;
-		dt1 = dt2;
-
-		float fElapsedTime = elapsedTime.count();
-		fTimeSinceStart += fElapsedTime;
-
-		// Capture mouse positions into a per-frame stable snapshot and query from this
-		// GetMousePosX() and GetMousePosY() return this stable snapshot
-		m_mousePosXFrame = m_mousePosX.load(std::memory_order_relaxed);
-		m_mousePosYFrame = m_mousePosY.load(std::memory_order_relaxed);
-
-		// Capture scroll atomic once per frame into a stable snapshot
-		// This also resets the atomic to 0, so the main thread can update it for the next frame without worrying about synchronization
-		m_mouseScrollFrame = m_mouseScroll.exchange(0, std::memory_order_relaxed);
-
-		// Capture key buffer to thread-local key buffer
-		bool localKeyRaw[MAX_KEYS];
-		{
-			std::lock_guard<std::mutex> lock(m_keyMutex);
-			std::memcpy(localKeyRaw, m_keyRaw, sizeof(m_keyRaw));
-		}
-
-		// Update key and mouse states on each frame, they may be used later by the programmer
-		// 1. Update key states
-		for (int i = 0; i < MAX_KEYS; ++i)
-		{
-			m_keyNewState[i] = localKeyRaw[i];		// Use the raw state (captured by the main thread callback)
-
-			m_keys[i].bPressed = false;
-			m_keys[i].bReleased = false;
-
-			if (m_keyNewState[i] != m_keyOldState[i])
-			{
-				if (m_keyNewState[i])
-				{
-					m_keys[i].bPressed = !m_keys[i].bHeld;
-					m_keys[i].bHeld = true;
-				}
-				else
-				{
-					m_keys[i].bReleased = true;
-					m_keys[i].bHeld = false;
-				}
-			}
-
-			m_keyOldState[i] = m_keyNewState[i];
-		}
-
-		// 2. Update mouse states
-		for (int i = 0; i < MAX_MOUSE_BUTTONS; ++i)
-		{
-			// Drain the atomic button held states into the new state array for processing
-			m_mouseNewState[i] = m_bMouseButtonHeld[i].load(std::memory_order_relaxed);
-
-			m_mouse[i].bPressed = false;
-			m_mouse[i].bReleased = false;
-
-			if (m_mouseNewState[i] != m_mouseOldState[i])
-			{
-				if (m_mouseNewState[i])
-				{
-					m_mouse[i].bPressed = !m_mouse[i].bHeld;
-					m_mouse[i].bHeld = true;
-				}
-				else
-				{
-					m_mouse[i].bReleased = true;
-					m_mouse[i].bHeld = false;
-				}
-				m_mouseOldState[i] = m_mouseNewState[i];
-			}
-		}
-
-		// Pause/resume the renderer
-		if (GetKey(GLFW_KEY_P).bPressed)
-		{
-			bIsPaused = !bIsPaused;
-
-			if (bIsPaused)
-			{
-				shouldUpdateCamera = false;
-
-				std::cout << "Engine: paused\n";
-			}
-			else
-			{
-				shouldUpdateCamera = true;
-
-				camera.fLastX = (float)GetMousePosX();
-				camera.fLastY = (float)GetMousePosY();
-				std::cout << "Engine: unpaused\n";
-			}
-		}
-
-		if (!Update(fElapsedTime))
-		{
-			m_bIsRunning = false;
-		}
-
-		// Control inputs - Change Projection and View matrices & handle keyboard inputs
-		UpdateCameraControls(fElapsedTime);
-
-		// FPS calculation
-		++iFrameCount;
-		fAccumulatedTime += fElapsedTime;
-
-		// Update FPS every 0.5 seconds
-		if (fAccumulatedTime >= 0.5f)
-		{
-			int fps = (int)(iFrameCount / fAccumulatedTime);
-
-			if (window)
-			{
-				snprintf(m_titleBuf, 32, "%s : %d FPS", m_sAppName.c_str(), fps);
-				m_titleDirty.store(true, std::memory_order_release);
-			}
-
-			fAccumulatedTime = 0.0f;
-			iFrameCount = 0;
-		}
-
-		// Swap buffers, this GLFW function is thread-safe to call from renderer thread
-		glfwSwapBuffers(window);
-	}
+		Frame();
 
 	// Calls derived virtual function
 	Destroy();
@@ -169,6 +43,140 @@ void OpenGL_3D::RendererThread()
 	// Give the window context back to the main thread
 	glfwMakeContextCurrent(nullptr);
 }
+
+// Runs every frame
+bool OpenGL_3D::Frame()
+{
+	// FPS calculation
+	auto now = std::chrono::system_clock::now();
+	std::chrono::duration<float> elapsedTime = now - m_frameLast;
+	m_frameLast = now;
+
+	float fElapsedTime = elapsedTime.count();
+	fTimeSinceStart += fElapsedTime;
+
+	// Capture mouse positions into a per-frame stable snapshot and query from this
+	// GetMousePosX() and GetMousePosY() return this stable snapshot
+	m_mousePosXFrame = m_mousePosX.load(std::memory_order_relaxed);
+	m_mousePosYFrame = m_mousePosY.load(std::memory_order_relaxed);
+
+	// Capture scroll atomic once per frame into a stable snapshot
+	// This also resets the atomic to 0, so the main thread can update it for the next frame without worrying about synchronization
+	m_mouseScrollFrame = m_mouseScroll.exchange(0, std::memory_order_relaxed);
+
+	// Capture key buffer to thread-local key buffer
+	bool localKeyRaw[MAX_KEYS];
+	{
+		std::lock_guard<std::mutex> lock(m_keyMutex);
+		std::memcpy(localKeyRaw, m_keyRaw, sizeof(m_keyRaw));
+	}
+
+	// Update key and mouse states on each frame, they may be used later by the programmer
+	// 1. Update key states
+	for (int i = 0; i < MAX_KEYS; ++i)
+	{
+		m_keyNewState[i] = localKeyRaw[i];		// Use the raw state (captured by the main thread callback)
+
+		m_keys[i].bPressed = false;
+		m_keys[i].bReleased = false;
+
+		if (m_keyNewState[i] != m_keyOldState[i])
+		{
+			if (m_keyNewState[i])
+			{
+				m_keys[i].bPressed = !m_keys[i].bHeld;
+				m_keys[i].bHeld = true;
+			}
+			else
+			{
+				m_keys[i].bReleased = true;
+				m_keys[i].bHeld = false;
+			}
+		}
+
+		m_keyOldState[i] = m_keyNewState[i];
+	}
+
+	// 2. Update mouse states
+	for (int i = 0; i < MAX_MOUSE_BUTTONS; ++i)
+	{
+		// Drain the atomic button held states into the new state array for processing
+		m_mouseNewState[i] = m_bMouseButtonHeld[i].load(std::memory_order_relaxed);
+
+		m_mouse[i].bPressed = false;
+		m_mouse[i].bReleased = false;
+
+		if (m_mouseNewState[i] != m_mouseOldState[i])
+		{
+			if (m_mouseNewState[i])
+			{
+				m_mouse[i].bPressed = !m_mouse[i].bHeld;
+				m_mouse[i].bHeld = true;
+			}
+			else
+			{
+				m_mouse[i].bReleased = true;
+				m_mouse[i].bHeld = false;
+			}
+			m_mouseOldState[i] = m_mouseNewState[i];
+		}
+	}
+
+	// Pause/resume the renderer
+	if (GetKey(GLFW_KEY_P).bPressed)
+	{
+		bIsPaused = !bIsPaused;
+
+		if (bIsPaused)
+		{
+			shouldUpdateCamera = false;
+
+			std::cout << "Engine: paused\n";
+		}
+		else
+		{
+			shouldUpdateCamera = true;
+
+			camera.fLastX = (float)GetMousePosX();
+			camera.fLastY = (float)GetMousePosY();
+			std::cout << "Engine: unpaused\n";
+		}
+	}
+
+	if (!Update(fElapsedTime))
+	{
+		m_bIsRunning = false;
+	}
+
+	// Control inputs - Change Projection and View matrices & handle keyboard inputs
+	UpdateCameraControls(fElapsedTime);
+
+	// FPS calculation
+	++m_fpsFrameCount;
+	m_fpsAccumulatedTime += fElapsedTime;
+
+	// Update FPS every 0.5 seconds
+	if (m_fpsAccumulatedTime >= 0.5f)
+	{
+		int fps = (int)(m_fpsFrameCount / m_fpsAccumulatedTime);
+
+		if (window)
+		{
+			snprintf(m_titleBuf, 32, "%s : %d FPS", m_sAppName.c_str(), fps);
+			m_titleDirty.store(true, std::memory_order_release);
+		}
+
+		m_fpsAccumulatedTime = 0.0f;
+		m_fpsFrameCount = 0;
+	}
+
+	// Swap buffers, this GLFW function is thread-safe to call from renderer thread
+	// web: no-op, the browser presents when the rAF callback returns
+	glfwSwapBuffers(window);
+
+	return m_bIsRunning;
+}
+
 
 void OpenGL_3D::UpdateCameraControls(float fElapsedTime)
 {
@@ -229,6 +237,9 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
 	if (!glfwInit())
 		Error("glfwInit failed");
 
+#ifdef __EMSCRIPTEN__
+	// WebGL2 == GLES 3.0. A "3.3 core" request has no meaning in the browser
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -268,6 +279,9 @@ void OpenGL_3D::ConstructWindow(int width, int height, std::string windowName)
 	glDepthFunc(GL_LESS);
 
 	// Enable multi-sampling (usually enabled, good to enable it ourselves anyways)
+#ifndef __EMSCRIPTEN__
+	// Not a GLES/WebGL2 enum, on web MSAA is the canvas `antialias`
+	// attribute, which GLFW_SAMPLES above already requests.
 	glEnable(GL_MULTISAMPLE);
 
 	// Make the image loading library flip textures on load by default since 
@@ -303,44 +317,54 @@ void OpenGL_3D::Start()
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
 
+#ifdef __EMSCRIPTEN__
+	/* Web has no renderer thread. The browser main thread must return to the event loop
+	 * every frame, so both desktop while-loops become one rAF callback (WebTick).
+	 * The GL context stays current on this thread, where WebGL requires it to live.
+	 * World's workers are still real pthreads (PTHREAD_POOL_SIZE pre-spawns them,
+	 * which matters because Setup() creates them before the first yield). */
+
+	// rAF callback is the function passed to window.requestAnimationFrame()
+	// that runs just before the browser performs its next screen repaint.
+	if (!Setup())
+	{
+		std::cerr << "Setup() failed\n";
+		return;
+	}
+	UpdateProjectionMatrix();
+	m_frameLast = std::chrono::system_clock::now();
+
+	m_lastCursorVisible = m_cursorVisible.load(std::memory_order_relaxed);
+	emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, true, &OpenGL_3D::PointerLockChanged);
+
+	/* A deferred pointer-lock request only runs inside an Emscripten html5 event handler
+	 * (GLFW's own DOM listeners don't count). These no-op handlers exist so a click on the
+	 * canvas or any key press flushes the queued request while the browser still treats it
+	 * as a user gesture. EM_FALSE: don't swallow the event, GLFW still receives it. */
+	emscripten_set_mousedown_callback("#canvas", nullptr, true,
+		[](int, const EmscriptenMouseEvent*, void*) -> EM_BOOL { return EM_FALSE; });
+	emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true,
+		[](int, const EmscriptenKeyboardEvent*, void*) -> EM_BOOL { return EM_FALSE; });
+
+	ApplyCursorMode(m_lastCursorVisible);	// queued: first click/key on the page captures the mouse
+
+	// fps=0 -> requestAnimationFrame (vsync). simulate_infinite_loop=true -> this call never
+	// returns, so main()'s stack (the Window object, World, ...) stays alive for the page's life.
+	emscripten_set_main_loop_arg(&OpenGL_3D::WebTick, this, 0, true);
+#else
+
 	// Make the window context null before calling the renderer thread
 	glfwMakeContextCurrent(nullptr);
 
 	// Start the renderer
 	std::thread rendererThread = std::thread(&OpenGL_3D::RendererThread, this);
 
-	bool lastCursorVisible = m_cursorVisible.load(std::memory_order_relaxed);
-	glfwSetInputMode(window, GLFW_CURSOR, lastCursorVisible ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+	m_lastCursorVisible = m_cursorVisible.load(std::memory_order_relaxed);
+	ApplyCursorMode(m_lastCursorVisible);
 
 	// While the renderer thread is running, the main thread handles poll events
 	while (m_bIsRunning)
-	{
-		// Update window title
-		if (m_titleDirty.exchange(false, std::memory_order_acquire))
-			glfwSetWindowTitle(window, m_titleBuf);
-
-		// Check for "esc" key press
-		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-		{
-			m_bIsRunning = false;
-			glfwSetWindowShouldClose(window, true);
-		}
-
-		// Only change when a state mutation occurs
-		bool currentCursorVisible = m_cursorVisible.load(std::memory_order_relaxed);
-		if (currentCursorVisible != lastCursorVisible)
-		{
-			glfwSetInputMode(window, GLFW_CURSOR, currentCursorVisible ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-			lastCursorVisible = currentCursorVisible;
-		}
-		
-		// Initiate shutdown when window is closed
-		if (glfwWindowShouldClose(window))
-			m_bIsRunning = false;
-
-		glfwPollEvents();
-		PollKeys();
-	}
+		MainThreadTick();
 
 	// Wait until the renderer thread exits
 	if (rendererThread.joinable())
@@ -352,7 +376,91 @@ void OpenGL_3D::Start()
 
 	glfwDestroyWindow(window);
 	glfwTerminate();
+#endif
 }
+
+#ifdef __EMSCRIPTEN__
+void OpenGL_3D::WebTick(void* p)
+{
+	auto* self = static_cast<OpenGL_3D*>(p);
+
+	// Same order as desktop: main thread publishes input, renderer consumes it.
+	// Here both run on the browser main thread, so the key mutex / atomics are
+	// uncontended but still correct, and no new threading invariant is introduced.
+	self->MainThreadTick();
+
+	if (!self->Frame())
+	{
+		// Mirrors the tail of RendererThread(). Practically unreachable on web (no ESC/close
+		// quit), kept so an Update() returning false still flushes saves and joins workers.
+		emscripten_cancel_main_loop();
+		self->Destroy();
+		glDeleteBuffers(1, &self->uboMatrices);
+		ImGui::DestroyContext();
+	}
+}
+#endif
+
+void OpenGL_3D::MainThreadTick()
+{
+	if (m_titleDirty.exchange(false, std::memory_order_acquire))
+		glfwSetWindowTitle(window, m_titleBuf);
+
+#ifndef __EMSCRIPTEN__
+	// ESC = quit on desktop, web: ESC belongs to the browser (releases pointer lock)
+	// and a tab has no "quit", so it must not stop the engine there.
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+	{
+		m_bIsRunning = false;
+		glfwSetWindowShouldClose(window, true);
+	}
+#endif
+
+	// Only change when a state mutation occurs
+	bool currentCursorVisible = m_cursorVisible.load(std::memory_order_relaxed);
+	if (currentCursorVisible != m_lastCursorVisible)
+	{
+		ApplyCursorMode(currentCursorVisible);
+		m_lastCursorVisible = currentCursorVisible;
+	}
+
+#ifndef __EMSCRIPTEN__
+	// Initiate shutdown when window is closed
+	if (glfwWindowShouldClose(window))
+		m_bIsRunning = false;
+#endif
+
+	glfwPollEvents();	// web: no-op, callbacks already fired from DOM events before this tick
+	PollKeys();
+}
+
+void OpenGL_3D::ApplyCursorMode(bool visible)
+{
+#ifdef __EMSCRIPTEN__
+	/* Browsers grant pointer lock only inside a user-gesture handler (click/key),this runs 
+	 * from the rAF tick, so a direct request is rejected. DeferUntilInEventHandler=1
+     * queues it and Emscripten performs it inside the next click/keydown on the page. */
+	if (visible)
+		emscripten_exit_pointerlock();
+	else
+		emscripten_request_pointerlock("#canvas", 1);
+#else
+	glfwSetInputMode(window, GLFW_CURSOR, visible ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+#endif
+}
+
+#ifdef __EMSCRIPTEN__
+EM_BOOL OpenGL_3D::PointerLockChanged(int, const EmscriptenPointerlockChangeEvent* e, void* p)
+{
+	auto* self = static_cast<OpenGL_3D*>(p);
+
+	// ESC (or alt-tab) makes the browser drop the lock without asking us. If the game still
+	// wants a captured mouse, queue a new request: the next click on the canvas re-captures.
+	if (!e->isActive && !self->m_lastCursorVisible)
+		emscripten_request_pointerlock("#canvas", 1);
+	return EM_TRUE;
+}
+#endif
 
 void OpenGL_3D::ErrorLog(const std::string& str)
 {

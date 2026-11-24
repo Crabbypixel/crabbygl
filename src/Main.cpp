@@ -212,7 +212,11 @@ public:
 
 		// ImGui context + GLFW backend are created on the main thread (OpenGL_3D::Start);
 		// only the GL backend belongs here, where the context is current
+#ifdef __EMSCRIPTEN__
+		ImGui_ImplOpenGL3_Init("#version 300 es");
+#else
 		ImGui_ImplOpenGL3_Init("#version 330");
+#endif
 
 		// Enable transparency
 		glEnable(GL_BLEND);
@@ -415,6 +419,8 @@ public:
 		moon.Draw(camera.position, dayCycle.SunDir());		// Draw opposite of sun
 
 		// Draw world
+#ifndef __EMSCRIPTEN__
+		// WebGL2 has no glPolygonMode: wireframe toggle is desktop-only (debug feature)
 		glPolygonMode(GL_FRONT_AND_BACK, shouldDrawAsWireframe ? GL_LINE : GL_FILL);
 		world.DrawAll(matProjection, camera.getLookAt());
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // restore for UI/other draws

@@ -1,4 +1,11 @@
+
 #include "rendering/Shader.h"
+
+#ifdef __EMSCRIPTEN__
+static const std::string GLSL_HEADER = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n";
+#else
+static const std::string GLSL_HEADER = "#version 330 core\n";
+#endif
 
 void Shader::load(const std::string& shaderPath)
 {
@@ -44,12 +51,12 @@ void Shader::load(const std::string& shaderPath)
 		}
 	}
 
-	std::string vertexShader = "#version 330 core\n #define SHADER_VERTEX\n #ifdef SHADER_VERTEX\n" + ss[(int)ShaderType::VERTEX].str();
-	std::string fragmentShader = "#version 330 core\n #define SHADER_FRAGMENT\n #ifdef SHADER_FRAGMENT\n" + ss[(int)ShaderType::FRAGMENT].str();
+	std::string vertexShader = GLSL_HEADER + "#define SHADER_VERTEX\n #ifdef SHADER_VERTEX\n" + ss[(int)ShaderType::VERTEX].str();
+	std::string fragmentShader = GLSL_HEADER + "#define SHADER_FRAGMENT\n #ifdef SHADER_FRAGMENT\n" + ss[(int)ShaderType::FRAGMENT].str();
 	std::string geometryShader;
 
 	if (isGeometryShaderPresent)
-		geometryShader = "#version 330 core\n #define SHADER_GEOMETRY\n #ifdef SHADER_GEOMETRY\n" + ss[(int)ShaderType::GEOMETRY].str();
+		geometryShader = GLSL_HEADER + "#define SHADER_GEOMETRY\n #ifdef SHADER_GEOMETRY\n" + ss[(int)ShaderType::GEOMETRY].str();
 
 	// Compile shaders
 	unsigned int vs = CompileShader(GL_VERTEX_SHADER, vertexShader, shaderPath);

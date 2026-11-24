@@ -21,7 +21,7 @@ uniform vec4 uColor;
 
 void main()
 {
-	float brightness = texture(uAsciiTexture, fUV).a;
+	float brightness = texture(uAsciiTexture, fUV).r;
 	if (brightness < 0.05) discard;
 	FragColor = vec4(uColor.rgb, uColor.a * brightness);
 }

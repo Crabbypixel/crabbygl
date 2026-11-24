@@ -4,6 +4,10 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>	// pointer lock API
+#endif
+
 // GLM (math library)
 #include <glm/glm.hpp>
 
@@ -14,6 +18,7 @@
 #include "stb/stb_image.h"
 
 #include <string>
+#include <chrono>
 #include <atomic>
 #include <mutex>
 #include <vector>
@@ -100,6 +105,13 @@ private:
 	// Atomic variable for cursor visibility - renderer writes, main reads
 	std::atomic<bool> m_cursorVisible{ false };
 
+	bool m_lastCursorVisible{ false };		// Main thread only: last mode applied via glfwSetInputMode
+
+	// Renderer thread only:
+	std::chrono::system_clock::time_point m_frameLast{};
+	float m_fpsAccumulatedTime = 0.0f;
+	int m_fpsFrameCount = 0;
+
 	// For title string
 	std::atomic<bool> m_titleDirty{ false };
 	char m_titleBuf[64] = {};
@@ -131,6 +143,29 @@ protected:
 private:
 	// Main renderer thread which constantly renders to the screen
 	void RendererThread();
+
+	/* One renderer iteration: input snapshot -> Update() -> camera -> FPS -> swap.
+	 * Desktop: RendererThread loops it.
+	 * Web: WebTick calls it once per browser frame.
+	 * the browser main thread (no separate renderer thread exists there).
+	 * Returns m_bIsRunning; false once Update() asked to stop. */
+	bool Frame();
+
+	// One main-thread iteration : title, cursor mode, quit checks, glfwPollEvents, PollKeys
+	// Desktop: Start() loops it. Web: WebTick calls it right before Frame
+	void MainThreadTick();
+
+	// Main thread only: show/capture the mouse
+	// Desktop: glfwSetInputMode; Web: browser pointer lock, which must be granted inside a user gesture
+	void ApplyCursorMode(bool visible);
+
+#ifdef __EMSCRIPTEN__
+	// emscripten_set_main_loop_arg callback; p = this
+	static void WebTick(void* p);
+
+	// Browser dropped/granted pointer lock (e.g. user pressed ESC); p = this
+	static EM_BOOL PointerLockChanged(int eventType, const EmscriptenPointerlockChangeEvent* e, void* p);
+#endif
 
 	// Update key and mouse states and update camera parameters
 	void UpdateCameraControls(float fElapsedTime);

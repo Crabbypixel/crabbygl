@@ -66,7 +66,9 @@ void Texture2D::loadTexture(char const* path)
 
         glBindTexture(GL_TEXTURE_2D, m_TextureID);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, format,
+        // GLES3/WebGL2 rejects unsized GL_RED as internalformat; GL_R8 is valid everywhere.
+        GLint internalFormat = (format == GL_RED) ? GL_R8 : (GLint)format;
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
             width, height, 0,
             format, GL_UNSIGNED_BYTE, data);
 

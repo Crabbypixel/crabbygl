@@ -72,12 +72,18 @@ void UIRenderer::LoadASCII(const char* path)
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
+#ifndef __EMSCRIPTEN__
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, data);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ONE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ONE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ONE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_RED);
+#else
+	// Sized GL_R8: unsized GL_RED as internalformat is invalid in GLES3/WebGL2
+	// No swizzle (WebGL2 dropped GL_TEXTURE_SWIZZLE_*): ASCII.glsl reads .r directly
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+#endif
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
