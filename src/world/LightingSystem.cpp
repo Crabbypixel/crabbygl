@@ -39,8 +39,48 @@ void LightingSystem::MarkVisited(Chunk* c)
 	if (c != m_lastVisited)
 	{
 		m_lastVisited = c;
-		m_visitedChunks.insert(c);
+		m_visitedChunks[c];
 	}
+}
+
+void LightingSystem::Touch(Chunk* c, int x, int z)
+{
+	uint8_t m = 0;
+	if (x == 0) m |= 0x1; else if (x == CX - 1) m |= 0x2;
+	if (z == 0) m |= 0x4; else if (z == CZ - 1) m |= 0x8;
+
+	m_visitedChunks[c] |= m;
+}
+
+// Why neighbors: their faces (and smooth-light samples) read borders
+void LightingSystem::FlushDirty()
+{
+	for (auto [c, m] : m_visitedChunks)
+	{
+		c->dirty = true;
+		if (!m)
+			continue;
+
+		const glm::ivec2 p = c->chunkPos;
+		auto mark = [&](int dx, int dz) {
+			if(Chunk* n = m_world->GetChunk((p.x + dx) * CX, (p.y + dz) * CZ))
+				n->dirty = true;
+		};
+
+		if (m & 0x1) mark(-1, 0);
+		if (m & 0x2) mark( 1, 0);
+		if (m & 0x4) mark(0, -1);
+		if (m & 0x8) mark(0,  1);
+
+		// Diagonals: corner-vertex samples. Bits may come from different voxels
+		if ((m & 0x5) == 0x5) mark(-1, -1);
+		if ((m & 0x9) == 0x9) mark(-1,  1);
+		if ((m & 0x6) == 0x6) mark( 1, -1);
+		if ((m & 0xA) == 0xA) mark( 1,  1);
+	}
+
+	m_visitedChunks.clear();
+	m_lastVisited = nullptr;
 }
 
 void LightingSystem::InitChunkLight(Chunk* chunk)
@@ -230,7 +270,7 @@ void LightingSystem::NotifyBlockPlaced(int wx, int wy, int wz, BlockType type)
 	if (emission > 0)
 	{
 		SetTorchLight(chunk, local.x, local.y, local.z, emission);
-		m_visitedChunks.insert(chunk);
+		Touch(chunk, local.x, local.z);
 		m_torchlightBFSQueue.emplace(Encode(local.x, local.y, local.z), chunk);
 	}
 
@@ -238,12 +278,12 @@ void LightingSystem::NotifyBlockPlaced(int wx, int wy, int wz, BlockType type)
 	{
 		int existingLightLevel = GetTorchLight(chunk, local.x, local.y, local.z);
 		SetTorchLight(chunk, local.x, local.y, local.z, 0);
-		m_visitedChunks.insert(chunk);
+		Touch(chunk, local.x, local.z);
 		m_torchlightRemovalBFSQueue.emplace(Encode(local.x, local.y, local.z), existingLightLevel, chunk);
 
 		int existingSunlight = GetSunlight(chunk, local.x, local.y, local.z);
 		SetSunlight(chunk, local.x, local.y, local.z, 0);
-		m_visitedChunks.insert(chunk);
+		Touch(chunk, local.x, local.z);
 		m_sunlightRemovalBFSQueue.emplace(Encode(local.x, local.y, local.z), existingSunlight, chunk);
 	}
 }
@@ -265,13 +305,13 @@ void LightingSystem::NotifyBlockRemoved(int wx, int wy, int wz)
 	int lightValue = GetTorchLight(chunk, local.x, local.y, local.z);
 	m_torchlightRemovalBFSQueue.emplace(index, lightValue, chunk);
 	SetTorchLight(chunk, local.x, local.y, local.z, 0);
-	m_visitedChunks.insert(chunk);
+	Touch(chunk, local.x, local.z);
 
 	// Sunlight
 	int sunValue = GetSunlight(chunk, local.x, local.y, local.z);
 	m_sunlightRemovalBFSQueue.emplace(index, sunValue, chunk);
 	SetSunlight(chunk, local.x, local.y, local.z, 0);
-	m_visitedChunks.insert(chunk);
+	Touch(chunk, local.x, local.z);
 }
 
 void LightingSystem::Update()
@@ -346,7 +386,7 @@ void LightingSystem::PropagateTorch()
 			{
 				// Set torch light of adjacent block
 				SetTorchLight(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z, lightLevel - 1);
-				m_visitedChunks.insert(adjacentBlockChunk);
+				Touch(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.z);
 
 				// Add adjacent block into queue
 				m_torchlightBFSQueue.emplace(Encode(adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z), adjacentBlockChunk);
@@ -355,9 +395,7 @@ void LightingSystem::PropagateTorch()
 	}
 
 	// Dirty chunks
-	for (Chunk* c : m_visitedChunks)
-		c->dirty = true;
-	m_visitedChunks.clear();
+	FlushDirty();
 }
 
 void LightingSystem::RemoveTorch()
@@ -416,7 +454,7 @@ void LightingSystem::RemoveTorch()
 			{
 				// Set adjacent block light level
 				SetTorchLight(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z, 0);
-				m_visitedChunks.insert(adjacentBlockChunk);
+				Touch(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.z);
 				m_torchlightRemovalBFSQueue.emplace(Encode(adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z), neighborLevel, adjacentBlockChunk);
 			}
 			else if(neighborLevel >= lightLevel)
@@ -428,9 +466,7 @@ void LightingSystem::RemoveTorch()
 	}
 
 	// Dirty chunks
-	for (Chunk* c : m_visitedChunks)
-		c->dirty = true;
-	m_visitedChunks.clear();
+	FlushDirty();
 }
 
 // Sunlight flood fill is almost similar to PropagateTorchlight() but don't attenuate vertically down
@@ -499,7 +535,7 @@ void LightingSystem::PropagateSunlight()
 			if (shouldPropagate)
 			{
 				SetSunlight(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z, newLight);
-				m_visitedChunks.insert(adjacentBlockChunk);
+				Touch(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.z);
 				
 				// Add adjacent block into the queue
 				m_sunlightBFSQueue.emplace(Encode(adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z), adjacentBlockChunk);
@@ -508,9 +544,7 @@ void LightingSystem::PropagateSunlight()
 	}
 
 	// Dirty chunks
-	for (Chunk* c : m_visitedChunks)
-		c->dirty = true;
-	m_visitedChunks.clear();
+	FlushDirty();
 }
 
 // Also similar to RemoveTorchlight()
@@ -573,7 +607,7 @@ void LightingSystem::RemoveSunlight()
 			if (neighborLevel != 0 && (neighborLevel < lightLevel || sunbeamRemoval))
 			{
 				SetSunlight(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z, 0);
-				m_visitedChunks.insert(adjacentBlockChunk);
+				Touch(adjacentBlockChunk, adjacentBlockPos.x, adjacentBlockPos.z);
 
 				// Spread removal
 				m_sunlightRemovalBFSQueue.emplace(Encode(adjacentBlockPos.x, adjacentBlockPos.y, adjacentBlockPos.z), neighborLevel, adjacentBlockChunk);
@@ -587,9 +621,7 @@ void LightingSystem::RemoveSunlight()
 	}
 
 	// Dirty chunks
-	for (Chunk* c : m_visitedChunks)
-		c->dirty = true;
-	m_visitedChunks.clear();
+	FlushDirty();
 }
 
 // Get bits 0000XXXX

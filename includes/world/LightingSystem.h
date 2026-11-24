@@ -3,7 +3,7 @@
 #include "world/Chunk.h"
 
 #include <queue>
-#include <unordered_set>
+#include <unordered_map>
 
 class World;
 
@@ -35,7 +35,10 @@ private:
 	std::queue<LightNode> m_sunlightBFSQueue;
 	std::queue<LightRemovalNode> m_sunlightRemovalBFSQueue;
 
-	std::unordered_set<Chunk*> m_visitedChunks;
+	std::unordered_map<Chunk*, uint8_t> m_visitedChunks;
+
+	void Touch(Chunk* c, int x, int z);
+	void FlushDirty();
 
 	Chunk* m_lastVisited = nullptr;
 	void MarkVisited(Chunk* c);

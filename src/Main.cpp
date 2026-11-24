@@ -541,7 +541,7 @@ public:
 		ImGui::InputInt("Z", &teleportZ);
 
 		if (ImGui::Button("Teleport"))
-			player.SetPos(glm::vec3(teleportX, teleportY, teleportZ));
+			player.SetPos(glm::vec3(playerPos.x + teleportX, playerPos.y + teleportY, playerPos.z + teleportZ));
 
 		ImGui::SliderFloat("Time of day", &dayCycle.time, 0.0f, 0.999f);
 		ImGui::Checkbox("Pause time", &dayCycle.paused);
