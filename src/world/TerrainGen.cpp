@@ -2,7 +2,7 @@
 #include "world/Chunk.h"
 #include "world/BlockType.h"
 
-#include "stb/stb_perlin.h"     // implementation is compiled once, in World.cpp
+#include "stb/stb_perlin.h"
 
 #include <algorithm>
 #include <cassert>
@@ -12,41 +12,38 @@ namespace
 {
     // Noise fields
     // Continentialness
-    constexpr float CONT_FREQ = 1.0f / 1024.0f;   // continents/oceans: huge
-    constexpr int   CONT_OCT = 5;                // high octaves = ragged coastlines, not blobs
+    constexpr float CONT_FREQ = 1.0f / 1024.0f;     // huge continents/oceans
+    constexpr int   CONT_OCT = 5;                   // high octaves = ragged coastlines
 
     // Erosion
-    constexpr float EROS_FREQ = 1.0f / 512.0f;    // mountainous vs flat regions
+    constexpr float EROS_FREQ = 1.0f / 512.0f;      // mountainous vs flat regions
     constexpr int   EROS_OCT = 4;
 
     // Peak and Valleys
-    constexpr float PV_FREQ = 1.0f / 256.0f;    // peaks & valleys: ridge spacing
-    constexpr int   PV_OCT = 4;                // wiggly ridgelines and valley channels
-    constexpr bool  PV_FOLD = true;             // false = raw noise as PV: valleys become round basins, no channels
+    constexpr float PV_FREQ = 1.0f / 256.0f;
+    constexpr int   PV_OCT = 4;                     // wiggly ridgelines and valley channels
+    constexpr bool  PV_FOLD = true;                 // false = raw noise as PV: valleys become 
 
     // Detailing
     constexpr float DETAIL_FREQ = 1.0f / 64.0f;     // small bumps so splines don't look like clay
     constexpr int   DETAIL_OCT = 4;
-    constexpr float DETAIL_AMP = 4.0f;             // blocks, everywhere on land (sea floor gets a quarter)
+    constexpr float DETAIL_AMP = 4.0f;              // blocks, everywhere on land (sea floor gets a quarter)
 
-    // Jaggedness (Minecraft has this exact term): ridged noise added only where relief is big AND PV is
-    // high, so summits get sharp crests and spikes while plains stay calm. Ridged = 1 - |n|: the zero
-    // crossings of n become knife-edge ridges instead of smooth hills
+    // Added only to peaks and mountainous terrain to make it jaggy, not applied to plains and low-lying rolling areas
     constexpr float JAGGED_FREQ = 1.0f / 40.0f;
     constexpr int   JAGGED_OCT = 3;
-    constexpr float JAGGED_AMP = 28.0f;            // blocks at full mountainness
+    constexpr float JAGGED_AMP = 28.0f;             // blocks at full mountainness
 
-    // fBm averages its octaves, so raw output is narrow (measured, 3-4 octaves: 98% within +-0.4).
-    // Stretch to ~+-1 so the spline x-axis means the same thing for every field
+    // Spreads narrow fBm output
     constexpr float SPREAD = 2.5f;
 
-    // ----- Knobs: surface -----
+    // Surface constants
     constexpr int   DIRT_DEPTH = 3;
-    constexpr int   BEACH_HEIGHT = 2;     // land up to SEA_LEVEL + this is sand
-    constexpr int   GRAVEL_DEPTH = 12;    // sea floor deeper than this below sea level is gravel
-    constexpr int   STONE_LINE = 150;   // bare stone above this
-    constexpr int   CLIFF_SLOPE = 3;     // height step to a neighbour >= this = cliff, bare stone
-    constexpr bool  DEBUG_AXES = true;  // brick line along world x = 0 / z = 0
+    constexpr int   BEACH_HEIGHT = 2;               // land up to SEA_LEVEL + this is sand
+    constexpr int   GRAVEL_DEPTH = 12;              // sea floor deeper than this below sea level is gravel
+    constexpr int   STONE_LINE = 150;               // bare stone above this
+    constexpr int   CLIFF_SLOPE = 3;                // height step to a neighbour >= this = cliff, bare stone
+    constexpr bool  DEBUG_AXES = true;              // brick line along world x = 0 / z = 0
 
     // Salts: one per noise layer so layers never share a field. Never renumber (changes every world)
     constexpr uint32_t SALT_HEIGHT = 1;    // stage 1, now the detail layer
@@ -107,14 +104,13 @@ TerrainGen::Noise2D::Noise2D(uint32_t seed, uint32_t salt)
     : ox(SeedOffset(seed, salt, 0)), oy(SeedOffset(seed, salt, 1)), oz(SeedOffset(seed, salt, 2)) {
 }
 
-// 2D field = horizontal slice of 3D Perlin at a seed-chosen y. Fractional y also avoids the
-// integer lattice plane, where Perlin has its zero crossings
+// 2D field = horizontal slice of 3D Perlin at a seed-chosen y
 float TerrainGen::Noise2D::Sample(float x, float z) const
 {
     return stb_perlin_noise3(x + ox, oy, z + oz, 0, 0, 0);
 }
 
-// Fractal sum, normalized back to ~[-1, 1] so octave/gain tweaks don't rescale the terrain
+// Fractal sum, normalized back to [-1, 1] so octave/gain tweaks don't rescale the terrain
 float TerrainGen::Noise2D::Fbm(float x, float z, int octaves, float lacunarity, float gain) const
 {
     float sum = 0.0f, amp = 1.0f, freq = 1.0f, norm = 0.0f;
@@ -128,7 +124,7 @@ float TerrainGen::Noise2D::Fbm(float x, float z, int octaves, float lacunarity, 
     return sum / norm;
 }
 
-// Ridged multifractal-lite: 1 - |n| per octave, squared to sharpen crests. Output 0..1
+// Ridged multifractal-lite: 1 - |n| per octave, squared to sharpen crests, outputs 0..1
 float TerrainGen::Noise2D::RidgedFbm(float x, float z, int octaves) const
 {
     float sum = 0.0f, amp = 1.0f, freq = 1.0f, norm = 0.0f;
