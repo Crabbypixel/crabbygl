@@ -5,6 +5,7 @@
 #include "rendering/ChunkMesh.h"
 #include "physics/WorldPhysics.h"
 #include "world/LightingSystem.h"
+#include "world/TerrainGen.h"
 
 #include <cmath>
 #include <array>
@@ -148,6 +149,7 @@ private:
     // World physics and lighting system manager
     WorldPhysics m_worldPhysics;
     LightingSystem m_lightingSystem;
+    const TerrainGen m_terrainGen;
 
     // Chunk coordinates with lighting initialization are postponed until their neighbors are loaded into the map
     //std::unordered_set<glm::ivec2, IVec2Hash> m_deferredLightingChunks;
@@ -155,8 +157,8 @@ private:
 	// World-player variables
     // TODO: Make this dynamic and make user to control - to be done later
     // Chunk load and unload distance
-    int m_viewDist = 12;
-    int m_unloadDist = 15;
+    int m_viewDist = 27;
+    int m_unloadDist = 30;
     glm::vec3 m_playerPos;
     glm::ivec2 m_lastPlayerChunk = { INT_MAX, INT_MAX };	// Previous frame player chunk pos
 
@@ -166,9 +168,6 @@ private:
     // Mark the adjacent chunk dirty if the world coord passed is at a chunk boundary (same with AO)
     void MarkAdjacentChunksDirty(int wx, int wy, int wz);
     void MarkAdjacentChunksAODirty(int wx, int wy, int wz);
-
-    // Returns height at location using Perlin noise
-    [[nodiscard]] static float GetTerrainHeight(int wx, int wz);
 
     // Chunk streaming functions
     [[nodiscard]] static std::string ChunkFilePath(glm::ivec2 coord);

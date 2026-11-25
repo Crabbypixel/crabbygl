@@ -28,7 +28,7 @@ static constexpr glm::ivec2 GUARDED_NEIGHBORS[] =
     {-1, -1 }
 };
 
-World::World() : m_worldPhysics(this), m_lightingSystem(this)
+World::World() : m_worldPhysics(this), m_lightingSystem(this), m_terrainGen(1337)
 {
     chunks.reserve(1000);
     m_chunkSaveWorker = std::thread(&World::SaveWorkerLoop, this);
@@ -112,64 +112,14 @@ void World::SetBlock(int worldX, int worldY, int worldZ, BlockType type)
 }
 
 // ----- World generation ------------------------------------------------
-float World::GetTerrainHeight(int wx, int wz)
-{
-    const float MIN_H = 20.0f;
-    const float MAX_H = 120.0f;
-
-    float fx = wx * 0.01f;
-    float fz = wz * 0.01f;
-
-    float n = stb_perlin_noise3(fx, 0.0f, fz, 0, 0, 0) * 0.5f + 0.5f;
-    n += (stb_perlin_noise3(fx * 2.0f, 0.0f, fz * 2.0f, 0, 0, 0) * 0.5f + 0.5f) * 0.50f;
-    n += (stb_perlin_noise3(fx * 4.0f, 0.0f, fz * 4.0f, 0, 0, 0) * 0.5f + 0.5f) * 0.25f;
-    n /= 1.75f;
-    n = pow(n, 2.0f);
-
-    return MIN_H + n * (MAX_H - MIN_H);
-}
-
 // Invoked by worker
 void World::FillChunk(Chunk& chunk, glm::ivec2 coord)
 {
     // Try loading from disk first
     if (LoadChunkFromDisk(chunk, coord))
-    {
         return;
-    }
 
-    // TODO: Add trees and grass
-	// Do all this in worldgen phase of development, not right now - to be done later
-    // Fresh Perlin gen
-    int cx = coord.x;
-    int cz = coord.y;
-
-    for (int x = 0; x < CX; ++x)
-    {
-        for (int z = 0; z < CZ; ++z)
-        {
-            int worldX = cx * CX + x;
-            int worldZ = cz * CZ + z;
-            int height = (int)GetTerrainHeight(worldX, worldZ);
-
-            float n = (height - 20.0f) / (100.0f - 20.0f);
-            int   thickness = 4 + (int)((1.0f - n) * 10.0f);
-            int   base = std::max(1, height - thickness);
-
-            chunk.SetUnchecked(x, 0, z, BlockType::BEDROCK);
-
-            for (int y = 1; y < base; ++y)
-                chunk.SetUnchecked(x, y, z, BlockType::STONE);
-
-            for (int y = base; y < height; ++y)
-                chunk.SetUnchecked(x, y, z, BlockType::DIRT);
-
-            chunk.SetUnchecked(x, height, z, BlockType::GRASS_BLOCK);
-
-            if (cx * CX + x == 0 || cz * CZ + z == 0)
-                chunk.SetUnchecked(x, height + 1, z, BlockType::BRICK);
-        }
-    }   
+    m_terrainGen.GenerateChunk(chunk, coord);
 }
 
 // ----- File IO ------------------------------------------------

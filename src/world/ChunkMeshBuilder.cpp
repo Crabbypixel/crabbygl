@@ -164,15 +164,15 @@ static constexpr bool UV_INV_COL[6]  = { false, true, false, true, false, true }
 // =========================================================================
 // Face cell
 // =========================================================================
-struct alignas(4) FaceCell {
-    uint32_t  key;      // 0 = invisible; packed key used for merge decisions
+struct alignas(8) FaceCell {
+    uint64_t  key;      // 0 = invisible; packed key used for merge decisions
     BlockType type;     // block type at this cell
     uint8_t   ao[4];    // raw AO [0..3] for vertices 0..3
     uint8_t   light[4]; // smoothed (sky << 4 | block) per vertex 0..3
 };
 
 
-[[nodiscard]] static uint32_t MakeKey(
+[[nodiscard]] static uint64_t MakeKey(
     BlockType type, const uint8_t ao[4],
     bool useOverlay, bool flip, const uint8_t light[4]) noexcept
 {
@@ -346,7 +346,7 @@ static uint8_t GetLightLocal(
     if (nPX && x >= CX && z >= 0 && z < CZ) return    nPX->GetLightMap(0,      y,      z);
     if (nNX && x  <  0 && z >= 0 && z < CZ) return    nNX->GetLightMap(CX - 1, y,      z);
     if (nPZ && z >= CZ && x >= 0 && x < CX) return    nPZ->GetLightMap(x,      y,      0);
-    if (nNX && z  <  0 && x >= 0 && x < CX) return    nNZ->GetLightMap(x,      y, CZ - 1);
+    if (nNZ && z  <  0 && x >= 0 && x < CX) return    nNZ->GetLightMap(x,      y, CZ - 1);
     if (nPX_PZ && x >= CX && z >= CZ)       return nPX_PZ->GetLightMap(0,      y,      0);
     if (nPX_NZ && x >= CX && z  <  0)       return nPX_NZ->GetLightMap(0,      y, CZ - 1);
     if (nNX_PZ && x  <  0 && z >= CZ)       return nNX_PZ->GetLightMap(CX - 1, y,      0);

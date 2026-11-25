@@ -165,6 +165,7 @@
     <ClCompile Include="src\world\Chunk.cpp" />
     <ClCompile Include="src\world\ChunkMeshBuilder.cpp" />
     <ClCompile Include="src\world\Raycast.cpp" />
+    <ClCompile Include="src\world\TerrainGen.cpp" />
     <ClCompile Include="src\world\World.cpp" />
     <ClCompile Include="src\rendering\IndexBuffer.cpp" />
     <ClCompile Include="src\rendering\Shader.cpp" />
@@ -507,6 +508,7 @@
     <ClInclude Include="includes\world\LightingSystem.h" />
     <ClInclude Include="includes\world\Raycast.h" />
     <ClInclude Include="includes\rendering\Vertex.h" />
+    <ClInclude Include="includes\world\TerrainGen.h" />
     <ClInclude Include="includes\world\World.h" />
   </ItemGroup>
   <ItemGroup>
