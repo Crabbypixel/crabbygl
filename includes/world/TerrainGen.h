@@ -47,8 +47,15 @@ private:
         [[nodiscard]] float RidgedFbm(float x, float z, int octaves) const;
     };
 
-    // "Dots on a graph": piecewise monotone cubic through the points (x ascending).
-    // Monotone = no overshoot between points, so a flat plateau stays flat and a coast can't dip into a spike
+    const uint32_t m_seed;
+
+    const Noise2D m_continentalNoise;
+    const Noise2D m_erosionNoise;
+    const Noise2D m_peaksValleysNoise;
+    const Noise2D m_detailNoise;
+    const Noise2D m_jaggedNoise;
+
+    // Piecewise monotone cubic through the points (x ascending) to define various noise values
     class Spline
     {
     public:
@@ -60,16 +67,8 @@ private:
         std::vector<float>     m_tangents;  // precomputed once; Eval is read-only
     };
 
-    const uint32_t m_seed;
-
-    const Noise2D m_continentalNoise;
-    const Noise2D m_erosionNoise;
-    const Noise2D m_peaksValleysNoise;
-    const Noise2D m_detailNoise;
-    const Noise2D m_jaggedNoise;
-
     const Spline m_baseHeight;      // continentalness -> height (oceans, coast, inland)
-    const Spline m_inland;          // continentalness -> 0..1, how much relief is allowed (none at sea)
+    const Spline m_inland;          // continentalness -> 0..1, how much relief is allowed (0 at sea)
     const Spline m_relief;          // erosion -> relief amplitude in blocks (low erosion = mountains)
     const Spline m_peaksValleys;    // PV -> -1..1 multiplier on relief (valley floor .. summit)
 };

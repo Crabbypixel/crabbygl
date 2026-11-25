@@ -751,7 +751,8 @@ public:
 int main()
 {
 	Window window;
-	window.ConstructWindow(1200, 675, "OpenGL");
+	//window.ConstructWindow(1200, 675, "OpenGL");
+	window.ConstructWindow(1600, 900, "OpenGL");
 	window.Start();
 
 	std::cout << "Goodbye!" << std::endl;

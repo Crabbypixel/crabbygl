@@ -194,7 +194,6 @@ void World::UnloadChunks()
     chunks.clear();
     m_chunkMeshes.clear();
     m_waterMeshes.clear();
-    //m_deferredLightingChunks.clear();
 }
 
 // ----- Raycast CRUD ------------------------------------------------
