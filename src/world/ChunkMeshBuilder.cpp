@@ -665,6 +665,9 @@ void ChunkMeshBuilder::BuildLayer(
 
             // Calculate or fetch ambient occlusion values based on neighbor modifications
             uint8_t ao[4];
+            ComputeAO(chunk, nPX, nNX, nPZ, nNZ, nPX_PZ, nPX_NZ, nNX_PZ, nNX_NZ, { localX, localY, localZ }, face, ao);
+#ifdef CRABBYDEBUGTEST
+            //chunk.aoCache[localX][localY][localZ][face] = PackAO(ao);
             if (rebuildAO)
             {
                 // Structural neighborhood changed so calculate new AO values and update cache
@@ -676,6 +679,7 @@ void ChunkMeshBuilder::BuildLayer(
                 // Neighborhood is unchanged so read packed values straight from cache
                 UnpackAO(chunk.aoCache[localX][localY][localZ][face], ao);
             }
+#endif
 
             // Flip quad diagonal setup if needed to prevent rendering artifacts
             const BlockType blockType = chunk.GetUnchecked(localX, localY, localZ);

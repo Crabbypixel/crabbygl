@@ -25,7 +25,7 @@ void OpenGL_3D::RendererThread()
 	if (!Setup())
 		m_bIsRunning = false;
 
-	m_frameLast = std::chrono::system_clock::now();
+	m_frameLast = std::chrono::steady_clock::now();
 
 	// Update projection matrix
 	UpdateProjectionMatrix();
@@ -48,7 +48,7 @@ void OpenGL_3D::RendererThread()
 bool OpenGL_3D::Frame()
 {
 	// FPS calculation
-	auto now = std::chrono::system_clock::now();
+	auto now = std::chrono::steady_clock::now();
 	std::chrono::duration<float> elapsedTime = now - m_frameLast;
 	m_frameLast = now;
 

@@ -108,7 +108,7 @@ private:
 	bool m_lastCursorVisible{ false };		// Main thread only: last mode applied via glfwSetInputMode
 
 	// Renderer thread only:
-	std::chrono::system_clock::time_point m_frameLast{};
+	std::chrono::steady_clock::time_point m_frameLast{};
 	float m_fpsAccumulatedTime = 0.0f;
 	int m_fpsFrameCount = 0;
 

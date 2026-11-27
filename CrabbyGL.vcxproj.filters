@@ -1112,6 +1112,9 @@
     <ClInclude Include="includes\world\TerrainGen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="includes\rendering\GL.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="externals\glm\detail\func_common.inl">
@@ -1547,7 +1550,6 @@
     <None Include="assets\shaders\Sky.glsl" />
     <None Include="tsan.supp" />
     <None Include="lsan.supp" />
-    <None Include="CrabbyGL.exe" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="libraries\glfw3.lib" />

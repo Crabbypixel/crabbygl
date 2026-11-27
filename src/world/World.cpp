@@ -381,6 +381,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
 {
     m_playerPos = playerPos;
     glm::ivec2 playerChunkCoord = ChunkCoord(playerPos.x, playerPos.z);
+    m_playerChunk = playerChunkCoord;
 
 	// Optimization: If the player is still in the same chunk as last update, and all chunks in the view distance are
     // already loaded (or queued for loading), then skip the entire function to avoid unnecessary load/unload operations
@@ -407,9 +408,7 @@ void World::UpdateChunkStreaming(const glm::vec3& playerPos)
 		// If the player is still in the same chunk and all chunks in the view distance are loaded
         // (or yet to be loaded in the queue), then no need to load/unload anything, directly skip the entire function
         if (hasAllChunksLoaded)
-        {
             return;
-        }
     }
     else
     {
@@ -629,8 +628,25 @@ void World::SyncRenderer()
         std::lock_guard<std::mutex> lockQ(m_meshJobMutex);
         std::lock_guard<std::mutex> lockR(m_chunkMeshUsageGuardMutex);
 
-        for (auto& [chunkPos, chunk] : chunks)
+        // There are two places where sorting chunks on player position is important: (1) Here in phase 1, and (2) in phase 2 (few lines down below)
+        // (1) Sort chunks relative to player in this phase as we prioritize to mesh the chunks nearest to player to load closer chunks faster
+        std::vector<glm::ivec2> chunksPosSortedToPlayer;
+        chunksPosSortedToPlayer.reserve(chunks.size());
+
+        for (auto& [pos, c] : chunks)
+            if (c->dirty)
+                chunksPosSortedToPlayer.push_back(pos);
+
+        // Sort relative to player
+        std::sort(chunksPosSortedToPlayer.begin(), chunksPosSortedToPlayer.end(), [&](glm::ivec2 a, glm::ivec2 b) {
+            const glm::ivec2 da = a - m_playerChunk, db = b - m_playerChunk;
+            return da.x * da.x + da.y * da.y < db.x * db.x + db.y * db.y;
+        });
+
+        for (const glm::ivec2& chunkPos : chunksPosSortedToPlayer)
         {
+            Chunk* chunk = chunks.find(chunkPos)->second.get();
+
             // Only mesh dirty chunks
             if (!chunk->dirty)
                 continue;
@@ -648,7 +664,7 @@ void World::SyncRenderer()
             // This is used in ChunkMeshBuilder when it accesses neighbor chunk data for Ambient Occlusion (and later greedy meshing)
             MeshJob job;
             job.coord = chunkPos;
-            job.chunk = chunk.get();
+            job.chunk = chunk;
             job.nPX    = getChunkFromChunkCoords(chunkPos + glm::ivec2{ 1,  0 });
             job.nNX    = getChunkFromChunkCoords(chunkPos + glm::ivec2{-1,  0 });
             job.nPZ    = getChunkFromChunkCoords(chunkPos + glm::ivec2{ 0,  1 });
@@ -672,38 +688,42 @@ void World::SyncRenderer()
         m_meshJobCV.notify_all();
 
     // Phase 2: Drain mesh staging, move the meshes from the staging region to local main thread memory
+    // (2) Sort chunks relative to player here as well since the relative ordering done by sorting last time might have changed
+    // now due to different mesh workers. Here a partial sort is enough as we need the nearest chunks to upload per frame. 
+    
     // Amortized GPU vertex upload
     const int MAX_UPLOADS_PER_FRAME = 4;
 
-    int uploadsThisFrame = 0;
-    int waterUploadsThisFrame = 0;
+    // Drain the nearest chunks to player
+    auto drainNearest = [&](auto& staging, auto& out) {
+        std::vector<glm::ivec2> ready;
+        ready.reserve(staging.size());
 
-    // Non-water pass
-    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> meshUploads;
+        for (auto& [c, _] : staging)
+            ready.push_back(c);
+
+        const int n = std::min<size_t>(ready.size(), MAX_UPLOADS_PER_FRAME);
+
+        // Sort
+        std::partial_sort(ready.begin(), ready.begin() + n, ready.end(), [&](glm::ivec2 a, glm::ivec2& b) {
+            const glm::ivec2 da = a - m_playerChunk, db = b - m_playerChunk;
+            return da.x * da.x + da.y * da.y < db.x * db.x + db.y * db.y;
+        });
+
+        // Upload
+        for (int i = 0; i < n; i++)
+        {
+            auto it = staging.find(ready[i]);
+            out.push_back({ it->first, std::move(it->second) });
+            staging.erase(it);
+        }
+    };
+
+    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> meshUploads, waterMeshUploads;
     {
         std::lock_guard<std::mutex> lock(m_meshStagingMutex);
-
-        auto it = m_meshStaging.begin();
-        while (it != m_meshStaging.end() && uploadsThisFrame < MAX_UPLOADS_PER_FRAME)
-        {
-            meshUploads.push_back({ it->first, std::move(it->second) });
-            it = m_meshStaging.erase(it);
-            uploadsThisFrame++;
-        }
-    }
-
-    // Water pass
-    std::vector<std::pair<glm::ivec2, std::vector<Vertex>>> waterMeshesUploads;
-    {
-        std::lock_guard<std::mutex> lock(m_meshStagingMutex);
-
-        auto it = m_waterMeshStaging.begin();
-        while (it != m_waterMeshStaging.end() && waterUploadsThisFrame < MAX_UPLOADS_PER_FRAME)
-        {
-            waterMeshesUploads.push_back({ it->first, std::move(it->second) });
-            it = m_waterMeshStaging.erase(it);
-            waterUploadsThisFrame++;
-        }
+        drainNearest(m_meshStaging, meshUploads);
+        drainNearest(m_waterMeshStaging, waterMeshUploads);
     }
 
     // Phase 3: Upload meshes to the GPU
@@ -716,7 +736,7 @@ void World::SyncRenderer()
     }
 
     // Water pass
-    for (auto& [coord, verts] : waterMeshesUploads)
+    for (auto& [coord, verts] : waterMeshUploads)
     {
         auto it = m_waterMeshes.find(coord);
         if (it != m_waterMeshes.end())

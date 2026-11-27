@@ -765,4 +765,5 @@ int main()
 * https://www.reddit.com/r/gamedev/comments/2iru8i/fast_flood_fill_lighting_in_a_blocky_voxel_game/
 * https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
 * https://learnopengl.com/
+* https://www.youtube.com/watch?v=ob3VwY4JyzE
 */

@@ -28,10 +28,6 @@ private:
 		return (y * CX * CZ) + (x * CZ) + z;
 	}
 
-	// Cached AO values for each block face (6 faces per block) to avoid redundant AO calculations during meshing
-	// TODO: Consider compressing this later - 50% memory reduction as AO values are [0..3], can pack 2 AO values per byte
-	mutable uint8_t aoCache[CX][CY][CZ][6];
-
 	// Light buffer - most significant 4 bits for skylight, least significant 4 bits for block light
 	// Singular color (white) for block light, to be expanded later
 	// TODO: Maybe consider linearizing this
@@ -43,7 +39,7 @@ private:
 	friend class LightingSystem;
 
 public:
-	explicit Chunk(glm::ivec2 pos) : chunkPos(pos) { memset(aoCache, 0, sizeof(aoCache)); memset(lightMap, 0, sizeof(lightMap)); }
+	explicit Chunk(glm::ivec2 pos) : chunkPos(pos) { memset(lightMap, 0, sizeof(lightMap)); }
 	Chunk(const Chunk&) = delete;
 	Chunk(Chunk&&) = delete;
 	Chunk& operator=(const Chunk&) = delete;
