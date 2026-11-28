@@ -152,6 +152,7 @@
     <ClCompile Include="externals\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="externals\imgui\imgui_tables.cpp" />
     <ClCompile Include="externals\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="src\debug\Profiler.cpp" />
     <ClCompile Include="src\world\DayNightCycle.cpp" />
     <ClCompile Include="src\rendering\Sun.cpp" />
     <ClCompile Include="src\world\LightingSystem.cpp" />
@@ -482,6 +483,7 @@
     <ClInclude Include="externals\stb\stb_perlin.h" />
     <ClInclude Include="externals\stb\stb_image.h" />
     <ClInclude Include="includes\debug\ChunkDebug.h" />
+    <ClInclude Include="includes\debug\Profiler.h" />
     <ClInclude Include="includes\physics\WorldPhysics.h" />
     <ClInclude Include="includes\player\Inventory.h" />
     <ClInclude Include="includes\player\Player.h" />

@@ -341,7 +341,7 @@ void OpenGL_3D::Start()
 		return;
 	}
 	UpdateProjectionMatrix();
-	m_frameLast = std::chrono::system_clock::now();
+	m_frameLast = std::chrono::steady_clock::now();
 
 	m_lastCursorVisible = m_cursorVisible.load(std::memory_order_relaxed);
 	emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, true, &OpenGL_3D::PointerLockChanged);
