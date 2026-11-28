@@ -8,7 +8,9 @@
 #include "core/OpenGL_3D.h"
 
 #include "models/VertexData.h"
+
 #include "debug/ChunkDebug.h"
+#include "debug/Profiler.h"
 
 #include "world/Raycast.h"
 #include "world/World.h"
@@ -92,6 +94,9 @@ private:
 	
 	bool isAOEnabled = true;
 	bool shouldDrawAsWireframe = false;
+
+	// Profiler
+	Ring<4096> ring;
 
 public:
 	bool Setup() override
@@ -226,6 +231,9 @@ public:
 
 	bool Update(float dt) override
 	{
+		// Profiler
+		ring.Push(dt * 1000.0f);
+
 		// ImGui - new frame settings
 		ImGui_ImplOpenGL3_NewFrame();
 		DrainUiEvents();
